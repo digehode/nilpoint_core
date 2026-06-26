@@ -1,0 +1,13 @@
+{% partialdef player_characters %}
+<div class="nilpoint nilpoint-character-list">
+<h1>Player Characters</h1>
+<ul>
+
+
+  {% for pc in nilpoint.player.player_characters %}
+    <li>{{pc}}</li>
+    {% empty %}
+    <li>You have no characters</li>
+  {% endfor %}
+</ul>
+{% endpartialdef %}

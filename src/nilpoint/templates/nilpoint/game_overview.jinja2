@@ -1,0 +1,9 @@
+{% partialdef game_overview %}
+    <h1>Game Overview: {{ game.instance_name }}</h1>
+    {{ game }}
+    {% if player_character %}
+        <p>You play this game</p>
+    {% else %}
+        <p>You do not play this game. Yet.</p>
+    {% endif %}
+{% endpartialdef %}

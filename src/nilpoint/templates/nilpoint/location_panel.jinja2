@@ -1,0 +1,14 @@
+{% load static i18n %}
+{% partialdef location_graphic %}
+    {% if location_graphic_override %}
+        <img src="{% static location_graphic_override %}"
+             height="900"
+             width="1600"
+             alt="TODO: alt tags in the location record">
+    {% else %}
+        <img src="{% static player_character.current_location.graphic %}"
+             height="900"
+             width="1600"
+             alt="TODO: alt tags in the location record">
+    {% endif %}
+{% endpartialdef %}

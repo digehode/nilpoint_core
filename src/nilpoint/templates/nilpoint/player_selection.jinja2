@@ -1,0 +1,30 @@
+{% partialdef player_selection %}
+    {% if player_character %}
+        <p>You are playing as {{ player_character.handle }}</p>
+        <p><a href="#"
+   hx-post="{{ game.get_dispatch_url }}?action=select_player_character"
+   hx-vals='{"player_character":"-1"}'>Go back to player character selection</a></p>
+    {% else %}
+        {% if player_characters %}
+            <p>Select a player character:</p>
+            <ul>
+                {% for pc in player_characters %}
+                    <li>
+                        <a href="#"
+                           hx-post="{{ game.get_dispatch_url }}?action=select_player_character"
+                           hx-vals='{"player_character": "{{ pc.id }}"}'>{{ pc.handle }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+            {% if game.allow_multiple_characters %}
+                <p>Or create a new one: <a href="#"
+    hx-get="{{ game.get_dispatch_url }}?action=new_player_character"
+    hx-target="#nilpoint-character-panel">New Player Character</a></p>
+            {% endif %}
+        {% else %}
+            <p>You do not have a character for this game. Create one here: <a href="#"
+    hx-get="{{ game.get_dispatch_url }}?action=new_player_character"
+    hx-target="#nilpoint-character-panel">New Player Character</a></p>
+        {% endif %}
+    {% endif %}
+{% endpartialdef %}

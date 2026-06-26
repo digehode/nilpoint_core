@@ -1,0 +1,52 @@
+{% partialdef debug %}
+    <h1>Nilpoint Debug Page</h1>
+    <pre>{{request.scheme}} : {{request.method}} : {{request.path}}</pre>
+    <p><b>Working on game:</b> {{ game }}</p>
+    <h2>Pllayer characters for this game</h2>
+    <ul>
+        {% for pc in player_characters %}
+            {{ pc.handle }}
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+    <h2>*args</h2>
+    <ul>
+        {% for i in args %}
+            <li>{{ i }}</li>
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+    <h2>**kwargs</h2>
+    <ul>
+        {% for k,v in kwargs.items %}
+            <li><b>{{ k }} :</b> {{ v }}</li>
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+    <h2>GET</h2>
+    <ul>
+        {% for k,v in request.GET.items %}
+            <li><b>{{ k }} :</b> {{ v }}</li>
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+    <h2>POST</h2>
+    <ul>
+        {% for k,v in request.POST.items %}
+            <li><b>{{ k }} :</b> {{ v }}</li>
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+    <h2>COOKIES</h2>
+    <ul>
+        {% for k,v in request.COOKIES.items %}
+            <li><b>{{ k }} :</b> {{ v }}</li>
+        {% endfor %}
+    </ul>
+    <p><b>USER:</b> {{ request.user }}</p>
+{% endpartialdef %}

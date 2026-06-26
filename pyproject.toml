@@ -1,0 +1,17 @@
+[project]
+name = "nilpoint"
+version = "0.1.0"
+description = "General purpose views, models, and context processors for adventure games."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=6.0.6",
+#    "django-environ>=0.13.0",
+#    "django-extensions>=4.1",
+#    "django-extras>=0.3",
+    "django-model-utils>=5.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

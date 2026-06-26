@@ -1,0 +1,23 @@
+{% load static i18n %}
+{% partialdef landing %}
+    <div id="nilpoint-game-container">
+        <h1>You are playing {{ game.instance_name }}</h1>
+        <div id="nilpoint-character-panel"
+             hx-get="{{ game.get_dispatch_url }}?action=player_selection_panel"
+             hx-trigger="load, player_character_changed from:body"
+             hx-target="this">Loading...</div>
+        <div id="nilpoint-scene"
+             hx-get="{{ game.get_dispatch_url }}?action=get_location_graphic"
+             hx-trigger="load, location_changed from:body, player_character_changed from:body"
+             hx-target="this">Loading...</div>
+        <div id="nilpoint-controls">
+            {# TODO: Pick up on location change - use signal #}
+            <h1>{{ player_character.current_location.name }}</h1>
+            <p>{{ player_character.current_location.description }}</p>
+        </div>
+    </div>
+    <div id="deck-debug"
+         hx-get="{{ game.get_dispatch_url }}?action=deck"
+         hx-target="this"
+         hx-trigger="load">testing deck</div>
+{% endpartialdef %}

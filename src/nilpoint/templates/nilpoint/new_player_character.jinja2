@@ -1,0 +1,33 @@
+{% partialdef new_player_character %}
+    <h1>New Player Character for {{ game.instance_name }}</h1>
+    {% if message %}
+        <p>{{ message }}</p>
+    {% endif %}
+    {% if form %}
+        {% if player_characters %}
+            <p>
+                You are allowed to have more than one player character in this game, but for your information you already have at least one player character for this game:
+            </p>
+            <ul>
+                {% for pc in player_characters %}
+                    <li>{{ pc.handle }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <p>
+            Welcome {{ user.username }}. In order to play {{ game.instance_name }},
+            you need to create a player character. This is your in-game
+            identity.
+        </p>
+        <form action="{{ submit_url }}"
+              method="post"
+              hx-post="{{ game.get_dispatch_url }}?action=new_player_character"
+              hx-target="#nilpoint-character-panel"
+              hx-swap="inner"
+              id="form-container">
+            {% csrf_token %}
+            {{ form }}
+            <input type="submit" value="Create Player Character">
+        </form>
+    {% endif %}
+{% endpartialdef %}
