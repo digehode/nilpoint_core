@@ -1,12 +1,13 @@
 from django.views.generic import View
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from .models import Game, Player, PlayerCharacter
-from django.http import HttpResponseNotFound, HttpResponse
+from django.http import HttpResponse
 from . import NilpointMissingSlugException
 from .forms import NewPlayerCharacterForm
 from functools import wraps
 import json
 from .models import get_model
+from django.template.loader import render_to_string
 
 # TODO: decorators for GET only handlers, POST only or both?
 # TODO: create "requires player character" decorator for reuse in game views
@@ -15,17 +16,36 @@ from .models import get_model
 class HtmxTriggerResponse(HttpResponse):
     """An HTTP Response that automatically attaches an HTMX trigger header."""
 
-    def __init__(self, content=b"", trigger_name=None, trigger_data=None, **kwargs):
-        super().__init__(content, **kwargs)
-
+    def __init__(self, trigger_name=None, trigger_data=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.htmx_triggers = {}
         if trigger_name:
-            # If there's data, pass a dict; otherwise just pass the event name string
-            payload = (
-                json.dumps({trigger_name: trigger_data})
-                if trigger_data
-                else trigger_name
+            self.htmx_triggers[trigger_name] = (
+                trigger_data if trigger_data is not None else None
             )
-            self["HX-Trigger"] = payload
+
+    def add_trigger(self, trigger_name, trigger_data=None):
+        """Dynamically add or update a trigger anytime before the response sends."""
+        self.htmx_triggers[trigger_name] = trigger_data
+
+    def serialize_htmx_headers(self):
+        if self.htmx_triggers:
+            triggers_serial = json.dumps(self.htmx_triggers)
+            self["HX-Trigger"] = triggers_serial
+
+    def from_template_response(response):
+
+        # Force the template to render so we can extract the HTML string
+        response.render()
+
+        # Pass the rendered content and headers into your custom class
+        custom_response = HtmxTriggerResponse(
+            content=response.content,
+            status=response.status_code,
+            content_type=response["Content-Type"],
+        )
+
+        return custom_response
 
 
 class NilpointGameBasic(View):
@@ -93,9 +113,11 @@ class NilpointGameBasic(View):
         full_context.update(self.get_context_data(request, *args, **kwargs))
         full_context.update(context)
 
-        response = render(request, template, context=full_context)
+        content = render_to_string(template, request=request, context=full_context)
+        response = HtmxTriggerResponse(content=content)
         if "trigger" in kwargs:
-            response["HX-Trigger"] = kwargs["trigger"]
+            response.add_trigger(kwargs["trigger"])
+            # response["HX-Trigger"] = kwargs["trigger"]
         return response
 
     def _request_wrapper(func):
@@ -118,6 +140,7 @@ class NilpointGameBasic(View):
             """
 
             response = None
+
             if (
                 request.user.is_authenticated
                 and Player.objects.filter(user=request.user).exists()
@@ -162,10 +185,12 @@ class NilpointGameBasic(View):
 
             self.action = request.GET.get("action", None)
             if self.action is None:
-                response = HttpResponse("Action required", content_type="text/plain")
+                response = HtmxTriggerResponse(
+                    content="Action required", content_type="text/plain"
+                )
             elif self.action not in self._handlers:
-                response = HttpResponse(
-                    f"Unknown action '{self.action}'", content_type="text/plain"
+                response = HtmxTriggerResponse(
+                    content=f"Unknown action '{self.action}'", content_type="text/plain"
                 )
 
             # Now to the specific GET/POST handler.  If the response
@@ -189,6 +214,8 @@ class NilpointGameBasic(View):
                     )
                     self.player_character.save()
 
+            response.add_trigger("test", "works")
+            response.serialize_htmx_headers()
             return response
 
         return _get_post_common
@@ -197,35 +224,38 @@ class NilpointGameBasic(View):
         selected_pc = request.POST.get("player_character", None)
         if selected_pc == "-1":
             self.player_character = None
-            return HtmxTriggerResponse(
-                "Cleared selected player character",
+            response = HtmxTriggerResponse(
+                content="Cleared selected player character",
                 content_type="text/plain",
-                trigger_name="player_character_changed",
             )
+            response.add_trigger(trigger_name="player_character_changed")
+            return response
 
         else:
             try:
                 pc = PlayerCharacter.objects.get_subclass(id=selected_pc)
 
             except PlayerCharacter.DoesNotExist:
-                return HttpResponse(
-                    f"Couldn't find selected player character '{selected_pc}'",
+                return HtmxTriggerResponse(
+                    content=f"Couldn't find selected player character '{selected_pc}'",
                     content_type="text/plain",
                 )
 
         if pc.player == self.player and pc.game == self.game:
             self.player_character = pc
             response = HtmxTriggerResponse(
-                f"Successfully selected pc {pc.handle}, id {pc.id}.",
+                content=f"Successfully selected pc {pc.handle}, id {pc.id}.",
                 content_type="text/plain",
-                trigger_name="player_character_changed",
             )
+            response.add_trigger(trigger_name="player_character_changed")
             response.set_cookie("pc", pc.id)
 
             return response
         else:
             self.player_character = None
-            return HttpResponse("Couldn't match selected pc", content_type="text/plain")
+            return HtmxTriggerResponse(
+                content="Couldn't match selected pc", content_type="text/plain"
+            )
 
     @_request_wrapper
     def get(self, request, *args, **kwargs):
@@ -397,7 +427,7 @@ class NilpointGameBasic(View):
                     **kwargs,
                 )
 
-                return HttpResponse("Valid", content_type="text/plain")
+                return HtmxTriggerResponse(content="Valid", content_type="text/plain")
             else:
                 return self.nilpoint_render(
                     request,
@@ -406,7 +436,9 @@ class NilpointGameBasic(View):
                     *args,
                     **kwargs,
                 )
-        return HttpResponse("Method not implemented", content_type="text/plain")
+        return HtmxTriggerResponse(
+            content="Method not implemented", content_type="text/plain"
+        )
 
     def debug(self, request, *args, **kwargs):
         """Debug view, can be used to drop in to places before the
@@ -457,8 +489,8 @@ class NilpointGameDispatchView(View):
             game = Game.objects.get(nilpoint_slug=slug)
 
         except Game.DoesNotExist:
-            return HttpResponseNotFound(
-                f"We don't seem to have a game usingthe slig '{slug}'!"
+            return HtmxTriggerResponse(
+                content=f"We don't seem to have a game usingthe slig '{slug}'!"
             )
         redir = redirect(game.get_dispatch_url())
         return redir
