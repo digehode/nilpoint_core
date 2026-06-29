@@ -60,6 +60,7 @@ class NilpointGameBasic(View):
         "select_player_character": "handle_select_player_character",
         "player_selection_panel": "handle_player_selection_panel",
         "get_location_graphic": "handle_get_location_graphic",
+        "get_player_location_panel": "handle_get_player_location_panel",
     }
 
     def __init__(self, *args, **kwargs):
@@ -213,8 +214,9 @@ class NilpointGameBasic(View):
                         self.game.get_initial_location()
                     )
                     self.player_character.save()
+                    print("Triggering player location changed")
+                    response.add_trigger("player_location_changed")
 
-            response.add_trigger("test", "works")
             response.serialize_htmx_headers()
             return response
 
@@ -338,6 +340,36 @@ class NilpointGameBasic(View):
             else:
                 default_location_graphic = self.game.default_location_graphic
             context = {"location_graphic_override": default_location_graphic}
+
+        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_get_player_location_panel(self, request, *args, **kwargs):
+        """Return the content of the graphic display area
+
+        - Override location_graphic_partial used to render the content.
+
+        """
+        context = {}
+        partial = self._value_from_subclass_or_default(
+            "player_location_panel",
+            "nilpoint/player_location_panel.jinja2#player_location_panel",
+        )
+
+        # TODO: Deal with missing location. See other place this
+        # happens, consider a single funciton to check and set
+
+        # if (
+        #     self.player_character is None
+        #     or self.player_character.current_location is None
+        # ):
+        #     if (
+        #         self.game.default_location_graphic is None
+        #         or self.game.default_location_graphic.strip() == ""
+        #     ):
+        #         default_location_graphic = "nilpoint/locations/00_none/simple.png"
+        #     else:
+        #         default_location_graphic = self.game.default_location_graphic
+        #     context = {"location_graphic_override": default_location_graphic}
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 

@@ -1,0 +1,7 @@
+{% load static i18n %}
+{% partialdef player_location_panel %}
+    <div id="nilpoint-player-location-panel">
+        <h1>{{ player_character.current_location.name }}</h1>
+        <p>{{ player_character.current_location.description }}</p>
+    </div>
+{% endpartialdef %}
