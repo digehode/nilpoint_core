@@ -344,9 +344,9 @@ class NilpointGameBasic(View):
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
     def handle_get_player_location_panel(self, request, *args, **kwargs):
-        """Return the content of the graphic display area
+        """Return the content of the location control panel
 
-        - Override location_graphic_partial used to render the content.
+        - Override player_location_panel used to render the content for custom responses
 
         """
         context = {}
@@ -354,22 +354,6 @@ class NilpointGameBasic(View):
             "player_location_panel",
             "nilpoint/player_location_panel.jinja2#player_location_panel",
         )
-
-        # TODO: Deal with missing location. See other place this
-        # happens, consider a single funciton to check and set
-
-        # if (
-        #     self.player_character is None
-        #     or self.player_character.current_location is None
-        # ):
-        #     if (
-        #         self.game.default_location_graphic is None
-        #         or self.game.default_location_graphic.strip() == ""
-        #     ):
-        #         default_location_graphic = "nilpoint/locations/00_none/simple.png"
-        #     else:
-        #         default_location_graphic = self.game.default_location_graphic
-        #     context = {"location_graphic_override": default_location_graphic}
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 

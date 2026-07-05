@@ -1,0 +1,61 @@
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 0.4s;
+}
+
+.htmx-settling img {
+    opacity: 0;
+}
+
+img.transition,
+img.fade-in {
+    transition: opacity 250ms ease-in;
+}
+
+img.fade {
+    transition: opacity 250ms ease-in;
+}
+
+/* ------- Layout -------- */
+
+#nilpoint-container h1 {
+    font-family: "Kode Mono", monospace;
+    font-optical-sizing: auto;
+    font-weight: 700;
+    font-style: normal;
+}
+
+#nilpoint-character-panel,
+#nilpoint-scene,
+#nilpoint-controls {
+    border: 2px solid rgba(255, 255, 255, 0.125);
+    padding: 1rem;
+}
+
+#nilpoint-controls {
+    height: 15rem;
+}
+
+#nilpoint-character-panel {
+    height: 10rem;
+}
+
+#nilpoint-scene {
+    width: 100%;
+
+    aspect-ratio: 16 / 9; /* Forces a 16:9 widescreen ratio */
+
+    /* background-color: #3498db; */
+    padding: 0px;
+    background-image: url("/static/nilpoint/ui_elements/noise_tile.png");
+    background-repeat: repeat;
+}
+
+#nilpoint-scene img {
+    width: 100%; /* Forces the image width to match the container */
+    height: 100%; /* Forces the image height to match the container */
+    display: block; /* Removes the default bottom whitespace gap inherent to inline images */
+    object-fit: cover; /* Instructs the image to perfectly fill the space without distortion */
+}
+
+/* ------- /Layout ------- */
