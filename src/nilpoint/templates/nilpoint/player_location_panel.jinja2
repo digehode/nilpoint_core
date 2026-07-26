@@ -4,6 +4,12 @@
         {% if player_character.current_location %}
             <h1>{{ player_character.current_location.name }}</h1>
             <p>{{ player_character.current_location.description }}</p>
+            <p>
+                Exits:
+                {% for e in player_character.current_location.exits.all %}
+                    ({{ e.name }}){% empty %} None
+                {% endfor %}
+            </p>
         {% else %}
             <p>No player/location</p>
         {% endif %}

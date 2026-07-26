@@ -181,6 +181,9 @@ class Location(models.Model):
         default=False,
     )
 
+    def __str__(self):
+        return f"Location {self.id} - {self.name}"
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -189,6 +192,24 @@ class Location(models.Model):
                 name="unique_initial_location_per_game",
             )
         ]
+
+
+class Exit(models.Model):
+    """Represents a way out of the current location"""
+
+    name = models.CharField(
+        help_text="A name for the exit",
+        max_length=100,
+        null=False,
+        blank=False,
+    )
+
+    exit_from = models.ForeignKey(
+        Location, null=False, on_delete=models.CASCADE, related_name="exits"
+    )
+    exit_to = models.ForeignKey(
+        Location, null=False, on_delete=models.CASCADE, related_name="entrances"
+    )
 
 
 class PlayerCharacter(models.Model):
