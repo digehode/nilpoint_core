@@ -58,4 +58,25 @@ img.fade {
     object-fit: cover; /* Instructs the image to perfectly fill the space without distortion */
 }
 
+#nilpoint-player-location-panel {
+    display: flex;
+    gap: 1rem; /* Adjust space between columns */
+    padding: 0px;
+    width: 100%;
+}
+
+#nilpoint-location-description-column {
+    /* border: 1px solid #0f0; */
+    flex: 0 0 70%;
+    margin: 0px;
+    padding: 1rem;
+}
+
+#nilpoint-exits-column {
+    /* border: 1px solid #00f; */
+    flex: 0 0 30%;
+    margin: 0px;
+    padding: 1rem;
+}
+
 /* ------- /Layout ------- */

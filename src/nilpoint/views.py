@@ -1,6 +1,6 @@
 from django.views.generic import View
 from django.shortcuts import redirect
-from .models import Game, Player, PlayerCharacter
+from .models import Game, Player, PlayerCharacter, Exit
 from django.http import HttpResponse
 from . import NilpointMissingSlugException
 from .forms import NewPlayerCharacterForm
@@ -11,6 +11,8 @@ from django.template.loader import render_to_string
 
 # TODO: decorators for GET only handlers, POST only or both?
 # TODO: create "requires player character" decorator for reuse in game views
+
+# TODO: Allow Exit objects to be subclassed - use same settings as other subclassed things
 
 
 class HtmxTriggerResponse(HttpResponse):
@@ -61,6 +63,7 @@ class NilpointGameBasic(View):
         "player_selection_panel": "handle_player_selection_panel",
         "get_location_graphic": "handle_get_location_graphic",
         "get_player_location_panel": "handle_get_player_location_panel",
+        "use_exit": "handle_use_exit",
     }
 
     def __init__(self, *args, **kwargs):
@@ -356,6 +359,42 @@ class NilpointGameBasic(View):
         )
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_use_exit(self, request, *args, **kwargs):
+        """Change the player character's location by using an exit. The ID of the exit should be given as 'exit' in the post request."""
+
+        # Get the location ID from post
+        exit_id = request.POST.get("exit", None)
+        print(request.POST)
+        if exit_id is not None:
+            exit_obj = Exit.objects.filter(id=exit_id).first()
+        else:
+            return HtmxTriggerResponse(
+                content="No exit given in POST parameters", content_type="text/plain"
+            )
+        if exit_obj is None:
+            return HtmxTriggerResponse(
+                content="Invalid Exit - doesn't exist", content_type="text/plain"
+            )
+        # Get the PC
+        pc = self.player_character
+        # Get the PC location
+        location = pc.current_location
+
+        if not location.exits.filter(id=exit_obj.id).exists():
+            return HtmxTriggerResponse(
+                content="Invalid Exit - not at current location",
+                content_type="text/plain",
+            )
+        # Change the location
+        pc.current_location = exit_obj.exit_to
+        pc.save()
+        # Send a signal to update the front end
+        response = HtmxTriggerResponse(
+            content=f"Location updated to {exit_obj.exit_to}", content_type="text/plain"
+        )
+        response.add_trigger(trigger_name="player_location_changed")
+        return response
 
     def handle_landing(self, request, *args, **kwargs):
         """Landing page. This is the first page seen when accessing

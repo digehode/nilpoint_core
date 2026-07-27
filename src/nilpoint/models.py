@@ -181,6 +181,12 @@ class Location(models.Model):
         default=False,
     )
 
+    @property
+    def graphic_safe(self):
+        if not self.graphic:
+            return self.game.default_location_graphic
+        return self.graphic
+
     def __str__(self):
         return f"Location {self.id} - {self.name}"
 

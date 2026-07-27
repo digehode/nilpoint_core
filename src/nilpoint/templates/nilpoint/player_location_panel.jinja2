@@ -2,14 +2,21 @@
 {% partialdef player_location_panel %}
     <div id="nilpoint-player-location-panel">
         {% if player_character.current_location %}
-            <h1>{{ player_character.current_location.name }}</h1>
-            <p>{{ player_character.current_location.description }}</p>
-            <p>
-                Exits:
-                {% for e in player_character.current_location.exits.all %}
-                    ({{ e.name }}){% empty %} None
-                {% endfor %}
-            </p>
+            <div id="nilpoint-location-description-column">
+                <h1>{{ player_character.current_location.name }}</h1>
+                <p>{{ player_character.current_location.description }}</p>
+            </div>
+            <div id="nilpoint-exits-column">
+                <h1>Exits</h1>
+                <p>
+                    {% for e in player_character.current_location.exits.all %}
+                        <a href="#"
+                           hx-post="{{ game.get_dispatch_url }}?action=use_exit"
+                           hx-vals='{"exit": "{{ e.id }}"}'>{{ e.name }}</a>
+                    {% empty %} None
+                    {% endfor %}
+                </p>
+            </div>
         {% else %}
             <p>No player/location</p>
         {% endif %}
