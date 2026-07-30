@@ -241,10 +241,12 @@ class NilpointGameBasic(View):
                 pc = PlayerCharacter.objects.get_subclass(id=selected_pc)
 
             except PlayerCharacter.DoesNotExist:
-                return HtmxTriggerResponse(
+                response = HtmxTriggerResponse(
                     content=f"Couldn't find selected player character '{selected_pc}'",
                     content_type="text/plain",
                 )
+                response.add_trigger("player_location_changed")
+                return response
 
         if pc.player == self.player and pc.game == self.game:
             self.player_character = pc
@@ -258,9 +260,11 @@ class NilpointGameBasic(View):
             return response
         else:
             self.player_character = None
-            return HtmxTriggerResponse(
+            response = HtmxTriggerResponse(
                 content="Couldn't match selected pc", content_type="text/plain"
             )
+            response.add_trigger("player_location_changed")
+            return response
 
     @_request_wrapper
     def get(self, request, *args, **kwargs):
@@ -440,13 +444,15 @@ class NilpointGameBasic(View):
         ):
             message = "You can't have more than one player character for this game"
         if message is not None:
-            return self.nilpoint_render(
+            response = self.nilpoint_render(
                 request,
                 partial,
                 {"message": message},
                 *args,
                 **kwargs,
             )
+            response.add_trigger("player_location_changed")
+            return response
 
         url = f"{self.game.get_dispatch_url()}?action=new_player_character"
         url = self._value_from_subclass_or_default("new_player_character_submit", url)
@@ -473,6 +479,7 @@ class NilpointGameBasic(View):
                     handle=form.cleaned_data.get("handle"),
                 )
                 message = f"Your new player character '{new_player_character.handle}' has been created."
+
                 return self.nilpoint_render(
                     request,
                     partial,
@@ -482,7 +489,6 @@ class NilpointGameBasic(View):
                     **kwargs,
                 )
 
-                return HtmxTriggerResponse(content="Valid", content_type="text/plain")
             else:
                 return self.nilpoint_render(
                     request,

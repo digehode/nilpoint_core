@@ -38,7 +38,7 @@
         <div id="deck-debug"
              hx-get="{{ game.get_dispatch_url }}?action=deck"
              hx-target="this"
-             hx-trigger="load">testing deck</div>
+             hx-trigger="load, player_character_changed from:body">testing deck</div>
         {# deck-debug #}
     </div>
     {# nilpoint-game-container #}
