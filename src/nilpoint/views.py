@@ -1,4 +1,5 @@
 from django.views.generic import View
+from django.contrib.auth.mixins import UserPassesTestMixin
 from django.shortcuts import redirect
 from .models import Game, Player, PlayerCharacter, Exit
 from django.http import HttpResponse
@@ -50,8 +51,12 @@ class HtmxTriggerResponse(HttpResponse):
         return custom_response
 
 
-class NilpointAdminPanel(View):
+class NilpointAdminPanel(UserPassesTestMixin, View):
     """Admin panel for site admin"""
+
+    def test_func(self):
+        """Ensure only authenticated staff users / site admins can access."""
+        return self.request.user.is_authenticated and self.request.user.is_staff
 
     def get(self, request, *args, **kwargs):
         """Renders the admin panel"""
