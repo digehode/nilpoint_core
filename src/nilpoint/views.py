@@ -50,6 +50,18 @@ class HtmxTriggerResponse(HttpResponse):
         return custom_response
 
 
+class NilpointAdminPanel(View):
+    """Admin panel for site admin"""
+
+    def get(self, request, *args, **kwargs):
+        """Renders the admin panel"""
+        context = {}
+        partial = "nilpoint/admin/admin_panel.jinja2#nilpoint_admin_panel"
+        content = render_to_string(partial, request=request, context=context)
+        response = HtmxTriggerResponse(content=content)
+        return response
+
+
 class NilpointGameBasic(View):
     """Super class for game views."""
 
