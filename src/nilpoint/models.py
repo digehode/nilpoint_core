@@ -183,6 +183,8 @@ class Location(models.Model):
         default=False,
     )
 
+    np_key = models.CharField(help_text="A unique key for this location", max_length=100, null=False, blank=False, unique=True)
+
     @property
     def graphic_safe(self):
         if not self.graphic:
