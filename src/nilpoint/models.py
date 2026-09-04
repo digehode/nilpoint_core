@@ -10,6 +10,8 @@ from .nilpoint_settings import nilpoint_settings
 
 # TODO: move to using InheritanceManager in game instead of custom downcast functions?
 
+# TODO: Add a unique key to the Location model and use that for player locations, etc.  This way we can create a setup function in a game that initialises locations, etc.  Do the same for things like PlayerCharacter, etc.  This will allow us to create a game setup script that can be run to create the initial game state, but also allow it to be rerun if we make changes to the game setup, version updates, etc.  Possibly replicate some migration process later on. If we try to just use DB ids, then we can't easily rerun the setup script without breaking things.  We can provide some functions like "create or update location" "create or update item" etc. to use in the setup funciton.
+
 
 def get_model(game, archetype):
     """Uses nillpoint_settings to return the appropriate class for the
