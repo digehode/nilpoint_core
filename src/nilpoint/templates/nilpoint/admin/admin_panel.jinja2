@@ -1,0 +1,31 @@
+{% load static i18n %}
+{% partialdef nilpoint_admin_game_list %}
+    <table>
+        <thead>
+            <tr>
+                <td>Game</td>
+                <td>Instance</td>
+                <td>Slug</td>
+                <td>Release</td>
+                <td>Latest Release</td>
+            </tr>
+        </thead>
+        <tbody>
+            {% for game in nilpoint.games %}
+                <tr>
+                    <td>{{ game.name }}</td>
+                    <td>{{ game.instance_name }}</td>
+                    <td>{{ game.nilpoint_slug }}</td>
+                    <td>{{ game.release }}</td>
+                    <td>{{ game.latest_release }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endpartialdef %}
+{% partialdef nilpoint_admin_panel %}
+    <div id="nilpoint-admin-panel">
+        <div id="nilpoint-admin-game-list">{% partial nilpoint_admin_game_list %}</div>
+    </div>
+    {# nilpoint-admin-panel #}
+{% endpartialdef %}
