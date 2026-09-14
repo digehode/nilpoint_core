@@ -39,6 +39,7 @@ class Game(models.Model):
 
     """
 
+    objects = InheritanceManager()
     name = "Generic Game"
     description = "This is a generic game. You should be subclassing "
     "this to create actual games. Or, if you have and you're still seing "
@@ -91,6 +92,13 @@ class Game(models.Model):
         null=True,
         blank=True,
         help_text="Path for including game-specific css",
+    )
+
+    release = models.IntegerField(
+        help_text="Current release of the game instance. Ties in with the game definition so updates can be applied progressively",
+        null=False,
+        blank=False,
+        default=0,
     )
 
     # Game type holds the subclass to which this can be downcast
@@ -158,6 +166,45 @@ class Game(models.Model):
     def get_initial_location(self):
         """Return the initial location for the game, or None if there isn't one"""
         return self.locations.filter(initial=True).first()
+
+    def latest_release(self):
+        """Subclasses use this to return the current latest release.
+
+        Release 0 is always blank. All subclasses should include release_update_x for each release, x.
+        """
+        return 0
+
+    def _get_migration_map(self):
+        """Discovers all methods decorated with @release_step."""
+        migration_map = {}
+        for attr_name in dir(self):
+            method = getattr(self, attr_name, None)
+            if callable(method) and hasattr(method, "_target_release"):
+                migration_map[method._target_release] = method
+        return migration_map
+
+    def update_release(self):
+        """Updates to the next release"""
+        migration_map = self._get_migration_map()
+        current = self.release
+        latest = self.latest_release()
+        if current == latest:
+            return current
+        if current > latest:
+            raise Exception(
+                f"Current release ({current}) is higher than latest release ({latest})"
+            )
+
+        target = current + 1
+
+        update_method = migration_map.get(target)
+        if not callable(update_method):
+            raise NotImplementedError(
+                f"No migration step defined for release {target} "
+                f"on {self.__class__.__name__}."
+            )
+
+        update_method()
 
 
 class Player(models.Model):

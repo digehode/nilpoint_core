@@ -80,3 +80,17 @@ img.fade {
 }
 
 /* ------- /Layout ------- */
+
+.fa-nilpoint {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    /* Shift it visually without affecting layout line-height */
+    position: relative;
+    top: 0.25em;
+    background-color: currentColor;
+    mask: url("/static/nilpoint/nilpoint-glyph.svg") no-repeat center / contain;
+    -webkit-mask:
+        url("/static/nilpoint/nilpoint-glyph.svg") no-repeat center / contain;
+}

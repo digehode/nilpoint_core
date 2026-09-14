@@ -3,7 +3,7 @@ from django.contrib.auth.mixins import UserPassesTestMixin
 from django.shortcuts import redirect
 from .models import Game, Player, PlayerCharacter, Exit
 from django.http import HttpResponse
-from . import NilpointMissingSlugException
+from .exceptions import NilpointMissingSlugException
 from .forms import NewPlayerCharacterForm
 from functools import wraps
 import json
