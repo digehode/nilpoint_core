@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Player, PlayerCharacter, Game, Location, Exit
+from .models import (
+    Player,
+    PlayerCharacter,
+    Game,
+    Location,
+    Exit,
+    Item,
+    InventoryItem,
+    LocationItem,
+)
 
 
 @admin.register(Player)
@@ -34,6 +43,21 @@ class LocationAdmin(admin.ModelAdmin):
 
 
 @admin.register(Exit)
-class Exitadmin(admin.ModelAdmin):
+class ExitAdmin(admin.ModelAdmin):
     model = Exit
     list_display = ["name", "exit_from", "exit_to"]
+
+
+@admin.register(Item)
+class ItemAdmin(admin.ModelAdmin):
+    model = Item
+
+
+@admin.register(InventoryItem)
+class InventoryItemAdmin(admin.ModelAdmin):
+    model = InventoryItem
+
+
+@admin.register(LocationItem)
+class LocationItemAdmin(admin.ModelAdmin):
+    model = LocationItem
