@@ -78,6 +78,14 @@ class Game(models.Model):
         default=None,
     )
 
+    default_item_graphic = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Static path to default item graphic. Uses nilpoint default if not set.",
+        default=None,
+    )
+
     css = models.CharField(
         max_length=100,
         null=True,
@@ -88,11 +96,28 @@ class Game(models.Model):
     # Game type holds the subclass to which this can be downcast
     _game_type = models.CharField(max_length=50, editable=False)
 
+    def initialise_player_character(self, pc):
+        """When a new player character is created for this game, this function is called to set them up ready to play.
+
+        Includes inventory items, location items, etc.
+        """
+
+        # TODO: replace or supercede with data migrations or fixtures of some sort?
+
+        pass
+
+    def initialise_game_instance(self):
+        """When a game instance is created, this function is used to initialise things like associated locations,
+        items, etc."""
+
+        pass
+
     def save(self, *args, **kwargs):
         """Checks and automatically sets, if necessary, the _game_type"""
         if not self._game_type:
             # Automatically set the type based on the class name
             self._game_type = self.__class__.__name__.lower()
+        # TODO: set the default location and item graphics if they're None
         super().save(*args, **kwargs)
 
     def get_real_instance(self):
@@ -217,6 +242,13 @@ class Exit(models.Model):
         Location, null=False, on_delete=models.CASCADE, related_name="entrances"
     )
 
+    def create_two_way_exit(location1, name1, location2, name2):
+        e1 = Exit(name=name1, exit_from=location1, exit_to=location2)
+        e2 = Exit(name=name2, exit_from=location2, exit_to=location2)
+        e1.save()
+        e2.save()
+        return (e1, e2)
+
 
 class PlayerCharacter(models.Model):
     """Represents a player for a given game
@@ -248,3 +280,68 @@ class PlayerCharacter(models.Model):
 
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
+
+
+class Item(models.Model):
+    """An item that exists in the world or an inventory.
+
+    This is the ideal of the item. It can be linked to a location or
+    inventory, using the LocationItem or InventoryItem to represent a
+    real/interactable version of the item.
+
+    Instances of this model are shared by all players and no player or
+    location data is associated here.
+
+    """
+
+    name = models.CharField(
+        help_text="A short name of the item, will be shown to the user",
+        max_length=100,
+        null=False,
+        blank=False,
+    )
+    description = models.TextField(
+        null=False,
+        blank=False,
+        help_text="Description of the item",
+    )
+    game = models.ForeignKey(
+        Game, null=False, on_delete=models.CASCADE, related_name="items"
+    )
+    graphic = models.CharField(
+        help_text="Static path for the graphic", max_length=100, null=True, blank=True
+    )
+
+    @property
+    def graphic_safe(self):
+        if not self.graphic:
+            return self.game.default_item_graphic
+        return self.graphic
+
+
+class LocationItem(models.Model):
+    """For a given player character and location, represents the presence of an item."""
+
+    location = models.ForeignKey(
+        Location, null=False, on_delete=models.CASCADE, related_name="items"
+    )
+    pc = models.ForeignKey(
+        PlayerCharacter,
+        null=False,
+        on_delete=models.CASCADE,
+        related_name="location_items",
+    )
+    item = models.ForeignKey(
+        Item, null=False, on_delete=models.CASCADE, related_name="locations"
+    )
+
+
+class InventoryItem(models.Model):
+    """For a given player character represents the presence of an item in the inventory."""
+
+    pc = models.ForeignKey(
+        PlayerCharacter, null=False, on_delete=models.CASCADE, related_name="inventory"
+    )
+    item = models.ForeignKey(
+        Item, null=False, on_delete=models.CASCADE, related_name="inventories"
+    )
