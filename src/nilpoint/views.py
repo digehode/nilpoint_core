@@ -506,6 +506,7 @@ class NilpointGameBasic(View):
                     game=self.game,
                     handle=form.cleaned_data.get("handle"),
                 )
+
                 message = f"Your new player character '{new_player_character.handle}' has been created."
 
                 return self.nilpoint_render(
