@@ -1,0 +1,12 @@
+{% load static i18n %}
+{% partialdef location_item_panel %}
+    <div id="nilpoint-location-item-panel">
+        {% if player_character.current_location %}
+            {% for item in player_character.current_location.items.all %}
+                <p>Item: {{ item }}</p>
+            {% endfor %}
+        {% else %}
+            <p>No player/location</p>
+        {% endif %}
+    </div>
+{% endpartialdef %}
