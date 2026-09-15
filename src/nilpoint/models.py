@@ -239,43 +239,30 @@ class Game(models.Model):
         update_method()
 
     def get_asset(self, asset_id, model_class=None):
-        """Retrieves a game asset by its asset_id scoped to this game instance.
-
-        If model_class is omitted, searches Location first, then Item, then Exit.
         """
-
+        Retrieves a game asset by its asset_id scoped to this game instance.
+        If model_class is provided, targets that specific model.
+        Otherwise, iterates over all concrete subclasses of GameAsset.
+        """
+        # Direct targeted lookup if model_class is specified
         if model_class:
             return model_class.objects.select_subclasses().get(
                 game=self, asset_id=asset_id
             )
 
-        # Search locations, then items if model_class not specified
-        location = (
-            Location.objects.select_subclasses()
-            .filter(game=self, asset_id=asset_id)
-            .first()
-        )
-        if location:
-            return location
-
-        item = (
-            Item.objects.select_subclasses()
-            .filter(game=self, asset_id=asset_id)
-            .first()
-        )
-        if item:
-            return item
-
-        exit_ = (
-            Exit.objects.select_subclasses()
-            .filter(game=self, asset_id=asset_id)
-            .first()
-        )
-        if exit_:
-            return exit_
+        # Dynamic lookup across all GameAsset subclasses
+        for model in apps.get_models():
+            if issubclass(model, GameAsset) and not model._meta.abstract:
+                asset = (
+                    model.objects.select_subclasses()
+                    .filter(game=self, asset_id=asset_id)
+                    .first()
+                )
+                if asset:
+                    return asset
 
         raise models.ObjectDoesNotExist(
-            f"Asset '{asset_id}' not found for game '{self}'."
+            f"Asset with asset_id '{asset_id}' not found for game '{self.name}'."
         )
 
 
