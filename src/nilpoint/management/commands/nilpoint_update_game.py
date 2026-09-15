@@ -31,7 +31,6 @@ class Command(BaseCommand):
 
         games = games.select_subclasses()
         for game in games:
-            # Cast or access your specific game instance/subclass logic
             if game.release < game.latest_release():
                 while game.release < game.latest_release():
                     rel_from = game.release
@@ -50,3 +49,10 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"'{game}' is already at (or over) latest release (v{game.release})."
                 )
+            # Update player characters
+            for pc in game.player_characters.select_subclasses():
+                while pc.release < game.release:
+                    self.stdout.write(
+                        f"  - Updating '{pc.handle} (PC {pc.id})' from v{pc.release} -> v{pc.release + 1}..."
+                    )
+                    pc.update_release()
