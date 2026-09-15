@@ -230,6 +230,8 @@ class Player(models.Model):
 class Location(models.Model):
     """Represents a location in the game."""
 
+    objects = InheritanceManager()
+
     name = models.CharField(
         help_text="A short name of the place, will be shown to the user",
         max_length=100,
@@ -384,6 +386,8 @@ class Item(models.Model):
     location data is associated here.
 
     """
+
+    objects = InheritanceManager()
 
     name = models.CharField(
         help_text="A short name of the item, will be shown to the user",
