@@ -36,10 +36,10 @@ def release_step(target_release: int):
                     f"raised an exception: {exc}"
                 ) from exc
 
-            if result is not True:
+            if result is not True and result is not None:
                 raise MigrationFailedError(
                     f"Migration step '{func.__name__}' (v{target_release}) on '{self}' failed. "
-                    f"Expected 'True', received '{result!r}'."
+                    f"Expected 'True' or 'None', received '{result!r}'."
                 )
 
             # Save state

@@ -241,7 +241,7 @@ class Game(models.Model):
     def get_asset(self, asset_id, model_class=None):
         """Retrieves a game asset by its asset_id scoped to this game instance.
 
-        If model_class is omitted, searches Location first, then Item.
+        If model_class is omitted, searches Location first, then Item, then Exit.
         """
 
         if model_class:
@@ -265,6 +265,14 @@ class Game(models.Model):
         )
         if item:
             return item
+
+        exit_ = (
+            Exit.objects.select_subclasses()
+            .filter(game=self, asset_id=asset_id)
+            .first()
+        )
+        if exit_:
+            return exit_
 
         raise models.ObjectDoesNotExist(
             f"Asset '{asset_id}' not found for game '{self}'."
