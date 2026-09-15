@@ -23,7 +23,7 @@ def release_step(target_release: int):
             # State check
             if self.release != expected_current_release:
                 raise InvalidReleaseStateError(
-                    f"Cannot execute '{func.__name__}'. Game '{self}' is at release {self.release}, "
+                    f"Cannot execute '{func.__name__}'. {self.__class__.__name__} item '{self}' is at release {self.release}, "
                     f"but this step requires release {expected_current_release}."
                 )
 

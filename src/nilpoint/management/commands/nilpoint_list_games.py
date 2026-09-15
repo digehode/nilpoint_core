@@ -34,8 +34,14 @@ class Command(BaseCommand):
             )
 
             needs_update = current_rel < latest_rel
+            pc_updates = ""
+            for pc in game.player_characters.select_subclasses():
+                if pc.release < game.release:
+                    pc_updates += self.style.WARNING(
+                        f"  - {pc.handle} - [{pc.release}/{game.release}] Update Available\n"
+                    )
 
-            if pending_only and not needs_update:
+            if pending_only and not needs_update and not len(pc_updates) == 0:
                 continue
 
             release_str = f"[{current_rel}/{latest_rel}]"
@@ -50,3 +56,4 @@ class Command(BaseCommand):
             name_display = getattr(game, "name", str(game))
 
             self.stdout.write(f"{slug_display:<30} {name_display:<30} {styled_release}")
+            self.stdout.write(pc_updates)

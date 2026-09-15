@@ -325,6 +325,50 @@ class PlayerCharacter(models.Model):
         on_delete=models.SET_NULL,
     )
 
+    release = models.IntegerField(
+        help_text="Current release of the game instance to which this PC is updated. Ties in with the game definition so updates can be applied progressively",
+        null=False,
+        blank=False,
+        default=0,
+    )
+
+    def _get_migration_map(self):
+        """Discovers all methods decorated with @release_step."""
+        migration_map = {}
+        for attr_name in dir(self):
+            method = getattr(self, attr_name, None)
+            if callable(method) and hasattr(method, "_target_release"):
+                migration_map[method._target_release] = method
+        return migration_map
+
+    def update_release(self):
+        """Updates to the next release"""
+        # TODO: check against game instance
+        migration_map = self._get_migration_map()
+        current = self.release
+        latest = self.game.release
+        if current == latest:
+            return current
+        if current > latest:
+            raise Exception(
+                f"Current PC release ({current}) is higher than latest game release ({latest})"
+            )
+
+        target = current + 1
+        if target > latest:
+            raise Exception(
+                f"PC {self.id} ({self.handle}) can't update beyond current game release ({latest})."
+            )
+        update_method = migration_map.get(target)
+
+        # While games need a contiguous version progression, PlayerCharacters don't
+        # If there isn't a function for the current release, we just push up the release number
+        if callable(update_method):
+            update_method()
+        else:
+            self.release += 1
+            self.save()
+
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
 
