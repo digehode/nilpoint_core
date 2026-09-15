@@ -81,6 +81,7 @@ class NilpointGameBasic(View):
         "get_location_graphic": "handle_get_location_graphic",
         "get_player_location_panel": "handle_get_player_location_panel",
         "use_exit": "handle_use_exit",
+        "get_location_item_panel": "handle_get_location_item_panel",
     }
 
     def __init__(self, *args, **kwargs):
@@ -377,6 +378,16 @@ class NilpointGameBasic(View):
         partial = self._value_from_subclass_or_default(
             "player_location_panel",
             "nilpoint/player_location_panel.jinja2#player_location_panel",
+        )
+
+        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_get_location_item_panel(self, request, *args, **kwargs):
+        """Return the list of items at the current location"""
+        context = {}
+        partial = self._value_from_subclass_or_default(
+            "location_item_panel",
+            "nilpoint/location_item_panel.jinja2#location_item_panel",
         )
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
