@@ -39,18 +39,19 @@ class PlayerCharacterAdmin(admin.ModelAdmin):
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
     model = Location
-    list_display = ["name", "description", "game", "graphic", "initial"]
+    list_display = ["name", "description", "game", "graphic", "initial", "asset_id"]
 
 
 @admin.register(Exit)
 class ExitAdmin(admin.ModelAdmin):
     model = Exit
-    list_display = ["name", "exit_from", "exit_to"]
+    list_display = ["name", "exit_from", "exit_to", "asset_id"]
 
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     model = Item
+    list_display = ["name", "asset_id"]
 
 
 @admin.register(InventoryItem)

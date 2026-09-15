@@ -10,6 +10,8 @@ from .nilpoint_settings import nilpoint_settings
 
 # TODO: move to using InheritanceManager in game instead of custom downcast functions?
 
+# TODO: use the logger to output information on updates - check how best to do this
+
 
 def get_model(game, archetype):
     """Uses nillpoint_settings to return the appropriate class for the
@@ -28,6 +30,36 @@ def get_model(game, archetype):
     # This is safe to call now because the app registry is fully loaded at runtime
     ConfiguredModel = apps.get_model(model_string, require_ready=True)
     return ConfiguredModel
+
+
+class GameAsset(models.Model):
+    """Game assets are things that define the game, such as Items and Locations.
+
+    They are not things that change with a player state, so LocationItem would not be an Asset.
+
+    GameAssets have an asset_id that is used to uniquely identify them for a given game instance.
+    """
+
+    asset_id = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Developer-defined unique identifier for scripting and migrations (e.g., 'alley_front')",
+    )
+    game = models.ForeignKey(
+        "Game",
+        on_delete=models.CASCADE,
+        related_name="%(class)ss",
+    )
+
+    objects = InheritanceManager()
+
+    class Meta:
+        abstract = True
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "asset_id"], name="unique_%(class)s_asset_per_game"
+            )
+        ]
 
 
 class Game(models.Model):
@@ -206,6 +238,38 @@ class Game(models.Model):
 
         update_method()
 
+    def get_asset(self, asset_id, model_class=None):
+        """Retrieves a game asset by its asset_id scoped to this game instance.
+
+        If model_class is omitted, searches Location first, then Item.
+        """
+
+        if model_class:
+            return model_class.objects.select_subclasses().get(
+                game=self, asset_id=asset_id
+            )
+
+        # Search locations, then items if model_class not specified
+        location = (
+            Location.objects.select_subclasses()
+            .filter(game=self, asset_id=asset_id)
+            .first()
+        )
+        if location:
+            return location
+
+        item = (
+            Item.objects.select_subclasses()
+            .filter(game=self, asset_id=asset_id)
+            .first()
+        )
+        if item:
+            return item
+
+        raise models.ObjectDoesNotExist(
+            f"Asset '{asset_id}' not found for game '{self}'."
+        )
+
 
 class Player(models.Model):
     """Represents a player
@@ -227,10 +291,8 @@ class Player(models.Model):
         return self.user.username
 
 
-class Location(models.Model):
+class Location(GameAsset):
     """Represents a location in the game."""
-
-    objects = InheritanceManager()
 
     name = models.CharField(
         help_text="A short name of the place, will be shown to the user",
@@ -242,9 +304,6 @@ class Location(models.Model):
         null=False,
         blank=True,
         help_text="Description of the location",
-    )
-    game = models.ForeignKey(
-        Game, null=False, on_delete=models.CASCADE, related_name="locations"
     )
     graphic = models.CharField(
         help_text="Static path for the graphic", max_length=100, null=True, blank=True
@@ -274,7 +333,7 @@ class Location(models.Model):
         ]
 
 
-class Exit(models.Model):
+class Exit(GameAsset):
     """Represents a way out of the current location"""
 
     name = models.CharField(
@@ -291,9 +350,25 @@ class Exit(models.Model):
         Location, null=False, on_delete=models.CASCADE, related_name="entrances"
     )
 
-    def create_two_way_exit(location1, name1, location2, name2):
-        e1 = Exit(name=name1, exit_from=location1, exit_to=location2)
-        e2 = Exit(name=name2, exit_from=location2, exit_to=location2)
+    def create_two_way_exit(location1, name1, location2, name2, asset_id_prefix):
+        if location1.game != location2.game:
+            raise ValueError(
+                "Trying to make an exit between locations in different game instances"
+            )
+        e1 = Exit(
+            name=name1,
+            exit_from=location1,
+            exit_to=location2,
+            game=location1.game,
+            asset_id=asset_id_prefix + "_A",
+        )
+        e2 = Exit(
+            name=name2,
+            exit_from=location2,
+            exit_to=location1,
+            game=location1.game,
+            asset_id=asset_id_prefix + "_B",
+        )
         e1.save()
         e2.save()
         return (e1, e2)
@@ -333,6 +408,21 @@ class PlayerCharacter(models.Model):
         blank=False,
         default=0,
     )
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+
+        # Save first to establish the primary key in the database
+        super().save(*args, **kwargs)
+
+        # Run post-creation catch-up migrations only once on initial creation
+        if is_new:
+            if hasattr(self, "update_to_latest"):
+                self.update_to_latest()
+
+    def update_to_latest(self):
+        while self.release < self.game.release:
+            self.update_release()
 
     def _get_migration_map(self):
         """Discovers all methods decorated with @release_step."""
@@ -375,7 +465,7 @@ class PlayerCharacter(models.Model):
         return f"PC({self.handle}) in {self.game.instance_name}"
 
 
-class Item(models.Model):
+class Item(GameAsset):
     """An item that exists in the world or an inventory.
 
     This is the ideal of the item. It can be linked to a location or
@@ -387,8 +477,6 @@ class Item(models.Model):
 
     """
 
-    objects = InheritanceManager()
-
     name = models.CharField(
         help_text="A short name of the item, will be shown to the user",
         max_length=100,
@@ -399,9 +487,6 @@ class Item(models.Model):
         null=False,
         blank=False,
         help_text="Description of the item",
-    )
-    game = models.ForeignKey(
-        Game, null=False, on_delete=models.CASCADE, related_name="items"
     )
     graphic = models.CharField(
         help_text="Static path for the graphic", max_length=100, null=True, blank=True
