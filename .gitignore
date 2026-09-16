@@ -11,3 +11,6 @@ wheels/
 
 # Emacs temp files
 *~
+
+#Node
+node_modules
