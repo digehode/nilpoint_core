@@ -61,6 +61,13 @@ class GameAsset(models.Model):
 
     They are not things that change with a player state, so LocationItem would not be an Asset.
 
+    IMPORTANT NOTE ON CONSTRAINTS
+
+    If you add constraints in a Meta class to subclasses of GameAsset,
+    don't just set `constraints = [...]` because it will clobber the
+    asset_id+game unique constraint. Instead use
+    `constraints = GameAsset.Meta.constraints + [...]`
+
     """
 
     asset_id = models.CharField(
@@ -331,8 +338,8 @@ class Location(GameAsset):
     def __str__(self):
         return f"Location {self.id} - {self.name}"
 
-    class Meta:
-        constraints = [
+    class Meta(GameAsset.Meta):
+        constraints = GameAsset.Meta.constraints + [
             models.UniqueConstraint(
                 fields=["game"],
                 condition=models.Q(initial=True),
