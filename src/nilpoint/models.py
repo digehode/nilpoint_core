@@ -65,9 +65,11 @@ class GameAsset(models.Model):
 class Game(models.Model):
     """The top-level Game object, to which all other game items will refer.
 
-    Subclass to create new games. Override the 'get_name' function to
-    identify the game. 'instance_name' is used to distinguish between
-    multiple instances of the same game on a given server.
+    Subclass to create new games. Change the name to
+    identify the game type.
+
+    'instance_name' is used to distinguish between multiple instances
+    of the same game on a given server.
 
     """
 
@@ -136,22 +138,6 @@ class Game(models.Model):
     # Game type holds the subclass to which this can be downcast
     _game_type = models.CharField(max_length=50, editable=False)
 
-    def initialise_player_character(self, pc):
-        """When a new player character is created for this game, this function is called to set them up ready to play.
-
-        Includes inventory items, location items, etc.
-        """
-
-        # TODO: replace or supercede with data migrations or fixtures of some sort?
-
-        pass
-
-    def initialise_game_instance(self):
-        """When a game instance is created, this function is used to initialise things like associated locations,
-        items, etc."""
-
-        pass
-
     def save(self, *args, **kwargs):
         """Checks and automatically sets, if necessary, the _game_type"""
         if not self._game_type:
@@ -161,7 +147,10 @@ class Game(models.Model):
         super().save(*args, **kwargs)
 
     def get_real_instance(self):
-        """Dynamically fetch the game subclass instance of the Game object"""
+        """Dynamically fetch the game subclass instance of the Game object
+
+        Likely to be replaced by InheritanceManager in future.
+        """
         if hasattr(self, self._game_type):
             return getattr(self, self._game_type)
         return self
@@ -311,6 +300,7 @@ class Location(GameAsset):
 
     @property
     def graphic_safe(self):
+        """Returns the path to the graphic for the location, or the default if unset."""
         if not self.graphic:
             return self.game.default_location_graphic
         return self.graphic
@@ -346,6 +336,10 @@ class Exit(GameAsset):
     )
 
     def create_two_way_exit(location1, name1, location2, name2, asset_id_prefix):
+        """Convenience function to create a two-way exit from location1 to location2.
+
+        Creates two exits, each with it's own "name" which the user sees and uses asset_id_prefix to create the asset IDs, one with _A appended, one with _B
+        """
         if location1.game != location2.game:
             raise ValueError(
                 "Trying to make an exit between locations in different game instances"
@@ -405,6 +399,7 @@ class PlayerCharacter(models.Model):
     )
 
     def save(self, *args, **kwargs):
+        """On save, if the game instance is new, updates are applied to the current latest release"""
         is_new = self.pk is None
 
         # Save first to establish the primary key in the database
@@ -416,6 +411,7 @@ class PlayerCharacter(models.Model):
                 self.update_to_latest()
 
     def update_to_latest(self):
+        """Processes updates until current release is equal to the latest release"""
         while self.release < self.game.release:
             self.update_release()
 
@@ -430,7 +426,7 @@ class PlayerCharacter(models.Model):
 
     def update_release(self):
         """Updates to the next release"""
-        # TODO: check against game instance
+
         migration_map = self._get_migration_map()
         current = self.release
         latest = self.game.release
@@ -489,6 +485,7 @@ class Item(GameAsset):
 
     @property
     def graphic_safe(self):
+        """Get the path to the graphic, or the default if unavailable"""
         if not self.graphic:
             return self.game.default_item_graphic
         return self.graphic
@@ -509,6 +506,9 @@ class LocationItem(models.Model):
     item = models.ForeignKey(
         Item, null=False, on_delete=models.CASCADE, related_name="locations"
     )
+
+    def __str__(self):
+        return f"LocationItem({self.item.name}, {self.location}, {self.pc})"
 
 
 class InventoryItem(models.Model):
