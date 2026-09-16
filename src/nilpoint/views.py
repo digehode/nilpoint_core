@@ -235,7 +235,6 @@ class NilpointGameBasic(View):
                         self.game.get_initial_location()
                     )
                     self.player_character.save()
-                    print("Triggering player location changed")
                     response.add_trigger("player_location_changed")
 
             response.serialize_htmx_headers()
@@ -397,7 +396,6 @@ class NilpointGameBasic(View):
 
         # Get the location ID from post
         exit_id = request.POST.get("exit", None)
-        print(request.POST)
         if exit_id is not None:
             exit_obj = Exit.objects.filter(id=exit_id).first()
         else:

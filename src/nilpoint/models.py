@@ -335,6 +335,7 @@ class Exit(GameAsset):
         Location, null=False, on_delete=models.CASCADE, related_name="entrances"
     )
 
+    @staticmethod
     def create_two_way_exit(location1, name1, location2, name2, asset_id_prefix):
         """Convenience function to create a two-way exit from location1 to location2.
 
