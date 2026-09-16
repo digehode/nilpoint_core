@@ -33,11 +33,34 @@ def get_model(game, archetype):
 
 
 class GameAsset(models.Model):
-    """Game assets are things that define the game, such as Items and Locations.
+    """Abstract base model for all game entities requiring stable identifiers across updates.
+
+    `GameAsset` provides a deterministic `asset_id` field (e.g., 'alley_front', 'wotsit_item')
+    scoped per game instance. Using static asset IDs allows game release scripts and narrative
+    logic to query entities reliably across development, testing, and production environments
+    without depending on auto-incrementing database primary keys (`id`).
+
+    That is, GameAssets have an asset_id that is used to uniquely
+    identify them for a given game instance.
+
+    Developer Usage:
+
+        All game entity models (e.g., `Location`, `Item`, `Exit`)
+        inherit from `GameAsset`. If you subclass, you inherit the
+        GameAsset functionality.
+
+        When instantiating assets in release steps, assign a unique `asset_id` string:
+
+            alley = Location.objects.create(
+                asset_id="alley_front",
+                name="An alley off a busy street",
+                game=self
+            )
+
+    Game assets are things that define the game, such as Items and Locations.
 
     They are not things that change with a player state, so LocationItem would not be an Asset.
 
-    GameAssets have an asset_id that is used to uniquely identify them for a given game instance.
     """
 
     asset_id = models.CharField(

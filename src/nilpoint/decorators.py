@@ -1,4 +1,20 @@
 # nilpoint/decorators.py
+"""Custom decorators for Nilpoint
+
+This module provides decorators used to manage stateful lifecycle updates and
+incremental release migrations across Nilpoint model classes (e.g., Game, PlayerCharacter).
+
+Decorators:
+    release_step(target_release):
+        Marks a method as an incremental migration step to reach `target_release`.
+        Enforces preconditions on the instance's current release version, inspects
+        return values, handles migration exceptions, updates the instance's release
+        version, and saves changes to the database upon successful execution.
+
+        use like `@release_step(3)` to label a method as the update
+        required from release 2 to 3
+
+"""
 
 import functools
 from nilpoint.exceptions import InvalidReleaseStateError, MigrationFailedError
