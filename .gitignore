@@ -11,3 +11,4 @@ wheels/
 
 # Emacs temp files
 *~
+/.vs
