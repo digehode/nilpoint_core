@@ -101,8 +101,46 @@ The Nilpoint settings module (nilpoint.nilpoint_settings) handles this.
 - This allows incremental data/model changes as game content evolves
 - nilpoint_update_game can apply updates to existing game data
 
-## Configuration and extension - TODO
-- NILPOINT_SETTINGS usage example
+## Configuration and extension
+
+### Template partial overrides via `_value_from_subclass_or_default`
+
+`NilpointGameBasic` provides a simple override mechanism for template partials. Each handler that renders a template checks for a corresponding class attribute on the view subclass; if present, that partial is used instead of the default.
+
+```python
+# In your game's views.py
+from nilpoint.views import NilpointGameBasic
+
+class MyGameView(NilpointGameBasic):
+    # Override any of these to supply your own template partials:
+    landing_partial = "mygame/landing.jinja2#landing"
+    overview_partial = "mygame/overview.jinja2#overview"
+    location_graphic_partial = "mygame/location_graphic.jinja2#location_graphic"
+    player_location_panel = "mygame/player_location.jinja2#player_location_panel"
+    location_item_panel = "mygame/location_items.jinja2#location_item_panel"
+    item_detail_partial = "mygame/item_detail.jinja2#item_detail"
+    new_player_character_partial = "mygame/new_pc.jinja2#new_player_character"
+    new_player_character_submit = "mygame:new_pc_submit"  # URL name for form POST
+```
+
+The core view's `_value_from_subclass_or_default(name, default)` method does the lookup: it checks `hasattr(self, name)` and returns the subclass's value if it exists, otherwise the provided default string.
+
+#### Handler to attribute mapping
+
+| Handler | Attribute | Default partial |
+|---------|-----------|-----------------|
+| `handle_landing` | `landing_partial` | `nilpoint/game_landing.jinja2#landing` |
+| `handle_overview` | `overview_partial` | `nilpoint/game_overview.jinja2#game_overview` |
+| `handle_get_location_graphic` | `location_graphic_partial` | `nilpoint/location_panel.jinja2#location_graphic` |
+| `handle_get_player_location_panel` | `player_location_panel` | `nilpoint/player_location_panel.jinja2#player_location_panel` |
+| `handle_get_location_item_panel` | `location_item_panel` | `nilpoint/location_item_panel.jinja2#location_item_panel` |
+| `handle_item_detail` | `item_detail_partial` | `nilpoint/location_item_panel.jinja2#item_detail` |
+| `handle_new_player_character` | `new_player_character_partial` | `nilpoint/new_player_character.jinja2#new_player_character` |
+| `handle_new_player_character` | `new_player_character_submit` | auto-derived dispatch URL |
+
+This keeps handler logic in core while letting game apps swap templates freely.
+
+### NILPOINT_SETTINGS usage example - TODO
 - Overriding PlayerCharacter or other core models
 - Registering game content types
 - Using custom subclasses per game
