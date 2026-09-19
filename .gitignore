@@ -11,10 +11,8 @@ wheels/
 
 # Emacs temp files
 *~
-<<<<<<< HEAD
 
 #Node
 node_modules
-=======
+
 /.vs
->>>>>>> 577ae8e308ba12a763988842e711a5f9bffe90f6

@@ -1,12 +1,24 @@
 {% load static i18n %}
 {% partialdef location_item_panel %}
-    <div id="nilpoint-location-item-panel">
-        {% if player_character.current_location %}
-            {% for item in player_character.current_location.items.all %}
-                <p>Item: {{ item }}</p>
+    {% if player_character.current_location %}
+        <h1>Items</h1>
+        <ul id="nilpoint-item-list">
+            {% for location_item in player_character.items_at.all %}
+                <li>
+                    {% if location_item.item.graphic_safe %}
+                        <img class="nilpoint-item-thumb"
+                             src="{% static location_item.item.graphic_safe %}"
+                             width="24"
+                             height="24"
+                             alt="{{ location_item.item.name }}">
+                    {% endif %}
+                    {{ location_item.item.name }}
+                </li>
+            {% empty %}
+                <li>None</li>
             {% endfor %}
-        {% else %}
-            <p>No player/location</p>
-        {% endif %}
-    </div>
+        </ul>
+    {% else %}
+        <p>No player/location</p>
+    {% endif %}
 {% endpartialdef %}

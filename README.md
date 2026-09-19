@@ -5,7 +5,7 @@ subtitle: A Django engine for building adventure and narrative web games
 
 # Nilpoint
 
-## Intro
+## Introduction
 
 Nilpoint is an adventure game engine for Django. It allows the creation of games that involve exploration through multiple locations, an inventory and progression through conditions such as having collected an item, answered a riddle, etc.
 
@@ -15,30 +15,79 @@ Games can be played by multiple people, each exploring their own version of the 
 
 Nilpoint was created to enable the game "Cyperpunk", an adventure game of cryptography and cryptanalysis.
 
-## Overview
-- Nilpoint is a reusable core package for adventure game backends
+## Overview -TODO
+
+- Nilpoint is a reusable core package for adventure games.
 - It provides shared models, views, templates, and release/update logic
 - It is designed to be extended by game-specific apps
 
 ## Core concepts
-- Game
-- Player
-- PlayerCharacter
-- Location
-- Exit
-- Item
-- InventoryItem
-- GameAsset
-- Game archetypes and model overrides
 
-## Architecture
+### Game
+
+A Game in Nilpoint is a class that ties together all objects, player characters, locations, etc.  Instances of each game object will be the same, but can have different players in different states of play.
+
+Different kinds of game are created by subclassing the core Game object.
+
+### Player
+
+A Player is an adapter from whatever user model your Django project is using to Nilpoint.  It doesn't currently do much other than sit between the user model and Nilpoint's models, but that may change in future.
+
+A Player object is referred to by PlayerCharacter objects.
+
+### PlayerCharacter
+
+A PlayerCharacter is a Player's character in a given game.  Games may allow a single Player to have multiple PlayerCharacters, or not. If Player plays multiple games, they will have a PlayerCharacter for each of them.
+
+PlayerCharacters have a "handle" which is the name that the game will use for them.  They also keep track of the location of the player in the game, and are referred-to by any records that relate to a single player in a given game, such as inventory items, etc.
+
+When a new PlayerCharacter is created, it creates all of the records required by the intersection of a player and a game. This could be LocationItems, InventoryItems, etc.
+
+### Location
+
+A Location is a place in a Game.  When a Game instance is created, all of its locations are instantiated too. So if you have two instances of a single game, the locations will be instantiated twice.  This allows for some level of customisation between game instances, such as changing location names, graphics, etc.
+
+### Exit
+
+An exit joins two locations in a single direction.  There is a utility function (`Exit.create_two_way_exit(...)` to simplify making a bidirectional exit between two locations.
+
+### Item
+
+Items are ideals of things that exist in the world. If multiple players have item X in their inventory, they are all referring to one Item object for that game through individual InventoryItem objects.  Similarly, if an item appears in a location, players interact with a LocationItem rather than the Item itself.
+
+### InventoryItem / LocationItem
+
+InventoryItem and LocationItem are how Items become visible, manipulable by players.  If an Item for a game should exist at a location, each player will need a LocationItem that maps the Location to the Item.  If they pick it up, the LocationItem for that player is deleted and an InventoryItem is created.  Other players will see no effect.
+
+### GameAsset
+
+GameAsset is an abstract class that classes related to a game inherit from. The purpose is to add a layer of unique ID to the asset that is unrelated to database IDs and in a scheme decided by the game creator. The goal is to allow assets to be found quickly in a way that makes sense to the creator.  This is particularly important when creating new characters, updating game items, etc.
+
+For example, we may need to give each new PlayerCharacter an Item. The Item will exist, but the unique DB key is likely to be different on the production system than it was on the developer system.  The name of the item may also have changed since the game was instantiated.  When the Item was created, along side the user-facing data such as it's name and description, and in addition to the automatic DB id assignment, it would have been given an asset_id, dictated by the GameAsset class.  The Game class has a `get_asset` method that will find the right object based on this ID, restricted to objects related to the current game instance.
+
+### PlayerScoped - TODO
+
+- PlayerScopedManager - object manage
+- PlayerScoped, augments subclasses to provide link to player character and use PlayerScopedManager to simplify limiting queries by player character
+
+## Game archetypes and model overrides
+
+A Nilpoint game is created by subclassing the models.Game class and any required related classes, and subclassing the views.NilpointGameBasic view.
+
+The Game subclass deals with all of the game setup and various bits of behaviour while the view handles requests to interact with game state.
+
+Some game classes get instantiated by core Nilpoint logic and subclasses need to be registered in order for this logic to use the correct one.
+
+The Nilpoint settings module (nilpoint.nilpoint_settings) handles this.
+
+## Architecture - TODO
 - Django app package layout
 - Model-first design
 - View layer for game flow
 - Templates and admin integration
 - Settings-driven customization
 
-## How it works
+## How it works - TODO
 - A game instance is represented as a Game object
 - Each game can have multiple locations, exits, items, and player characters
 - A player belongs to a user and may have characters in one or more games
@@ -46,38 +95,38 @@ Nilpoint was created to enable the game "Cyperpunk", an adventure game of crypto
 - The game view stack loads the game by nilpoint_slug and renders common interaction states
 - HTMX is used for partial UI updates and trigger-based UI responses
 
-## Game lifecycle and releases
+## Game lifecycle and releases - TODO
 - Each game and player character carries a release number
 - Release migrations are managed through @release_step
 - This allows incremental data/model changes as game content evolves
 - nilpoint_update_game can apply updates to existing game data
 
-## Configuration and extension
+## Configuration and extension - TODO
 - NILPOINT_SETTINGS usage example
 - Overriding PlayerCharacter or other core models
 - Registering game content types
 - Using custom subclasses per game
 
-## Installation
+## Installation - TODO
 - Install package
 - Add to INSTALLED_APPS
 - Add Nilpoint URLs
 - Configure Django settings
 - Set up NILPOINT_SETTINGS
 
-## Example usage
+## Example usage - TODO
 - Creating a game instance
 - Defining a game-specific player character subclass
 - Registering game model classes
 - Loading a game by slug
 - Rendering the game landing page
 
-## Management commands
+## Management commands - TODO
 - nilpoint_list_games
 - nilpoint_update_game
 - Example output and usage
 
-## Project structure
+## Project structure - TODO - needed?
 - src/nilpoint/
   - models.py
   - views.py
@@ -89,12 +138,12 @@ Nilpoint was created to enable the game "Cyperpunk", an adventure game of crypto
   - management/commands/
   - tests/
 
-## Limitations / current status
+## Limitations / current status - TODO
 - Early-stage package
 - Requires a host Django project
 - Not a standalone game server
 - Still has placeholder/rough areas and TODOs
 
-## Credits / attribution
-- Link to [ATTRIBUTION.md](ATTRIBUTION.md)
-- Django and HTMX patterns?
+## Credits / attribution - TODO
+- Link to ATTRIBUTION.md
+- Django and HTMX, etc.
