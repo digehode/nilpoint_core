@@ -1,7 +1,7 @@
 from django.views.generic import View
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.shortcuts import redirect
-from .models import Game, Player, PlayerCharacter, Exit
+from .models import Game, Player, PlayerCharacter, Exit, Item
 from django.http import HttpResponse
 from .exceptions import NilpointMissingSlugException
 from .forms import NewPlayerCharacterForm
@@ -82,6 +82,7 @@ class NilpointGameBasic(View):
         "get_player_location_panel": "handle_get_player_location_panel",
         "use_exit": "handle_use_exit",
         "get_location_item_panel": "handle_get_location_item_panel",
+        "item_detail": "handle_item_detail",
     }
 
     def __init__(self, *args, **kwargs):
@@ -389,6 +390,42 @@ class NilpointGameBasic(View):
             "nilpoint/location_item_panel.jinja2#location_item_panel",
         )
 
+        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_item_detail(self, request, *args, **kwargs):
+        """Return the detail view of a single item (graphic, name, description).
+
+        The item ID should be given as 'item' in the request. The item must
+        belong to the current game instance.
+
+        - Override item_detail_partial used to render the content.
+
+        """
+        item_id = request.GET.get("item", None) or request.POST.get("item", None)
+        if item_id is None:
+            return HtmxTriggerResponse(
+                content="No item given in request parameters",
+                content_type="text/plain",
+            )
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError):
+            return HtmxTriggerResponse(
+                content="Invalid item id", content_type="text/plain"
+            )
+
+        item = Item.objects.filter(id=item_id, game=self.game).first()
+        if item is None:
+            return HtmxTriggerResponse(
+                content="Invalid item - doesn't exist in this game",
+                content_type="text/plain",
+            )
+
+        context = {"item": item}
+        partial = self._value_from_subclass_or_default(
+            "item_detail_partial",
+            "nilpoint/location_item_panel.jinja2#item_detail",
+        )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
     def handle_use_exit(self, request, *args, **kwargs):

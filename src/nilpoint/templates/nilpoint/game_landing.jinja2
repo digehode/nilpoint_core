@@ -39,7 +39,9 @@
              hx-trigger="load, player_character_changed from:body, player_location_changed from:body"
              hx-target="this"
              hx-swap="innerHTML"></div>
-        {# nilpoint-controls #}
+        {# nilpoint-location-item-panel #}
+        <div id="nilpoint-item-detail-panel"></div>
+        {# nilpoint-item-detail-panel #}
         <div id="deck-debug"
              hx-get="{{ game.get_dispatch_url }}?action=deck"
              hx-target="this"

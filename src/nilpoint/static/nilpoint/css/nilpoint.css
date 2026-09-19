@@ -88,6 +88,54 @@ img.fade {
     vertical-align: middle;
 }
 
+/* Item detail panel: hidden until a detail is loaded into it */
+#nilpoint-item-detail-panel:empty {
+    display: none;
+}
+
+#nilpoint-item-detail-panel {
+    border: 2px solid rgba(255, 255, 255, 0.125);
+    padding: 1rem;
+}
+
+/* Item detail: image + name/description.
+   Small screens: stacked, image above.
+   Medium+ screens: side by side, split 1:2 (image : text). */
+#nilpoint-item-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.nilpoint-item-detail-graphic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nilpoint-item-detail-graphic img {
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+@media (min-width: 768px) {
+    #nilpoint-item-detail {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .nilpoint-item-detail-graphic {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .nilpoint-item-detail-text {
+        flex: 2 1 0;
+        min-width: 0;
+    }
+}
+
 /* ------- /Layout ------- */
 
 .fa-nilpoint {

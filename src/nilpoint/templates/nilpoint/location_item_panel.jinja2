@@ -13,6 +13,10 @@
                              alt="{{ location_item.item.name }}">
                     {% endif %}
                     {{ location_item.item.name }}
+                    <a href="{{ game.get_dispatch_url }}?action=item_detail&item={{ location_item.item.id }}"
+                       hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ location_item.item.id }}"
+                       hx-target="#nilpoint-item-detail-panel"
+                       hx-swap="innerHTML">Detail</a>
                 </li>
             {% empty %}
                 <li>None</li>
@@ -21,4 +25,20 @@
     {% else %}
         <p>No player/location</p>
     {% endif %}
+{% endpartialdef %}
+{% partialdef item_detail %}
+    <div id="nilpoint-item-detail">
+        <div class="nilpoint-item-detail-graphic">
+            {% if item.graphic_safe %}
+                <img src="{% static item.graphic_safe %}"
+                     alt="{{ item.name }}"
+                     width="24"
+                     height="24">
+            {% endif %}
+        </div>
+        <div class="nilpoint-item-detail-text">
+            <h1>{{ item.name }}</h1>
+            <p>{{ item.description }}</p>
+        </div>
+    </div>
 {% endpartialdef %}
