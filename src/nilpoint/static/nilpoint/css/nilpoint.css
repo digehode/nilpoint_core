@@ -79,6 +79,15 @@ img.fade {
     padding: 1rem;
 }
 
+/* ------- Items ------- */
+
+/* Thumbnails in the location item list: scaled to the surrounding line height */
+.nilpoint-item-thumb {
+    height: 1.2em;
+    width: auto;
+    vertical-align: middle;
+}
+
 /* ------- /Layout ------- */
 
 .fa-nilpoint {

@@ -483,8 +483,65 @@ class PlayerCharacter(models.Model):
             self.release += 1
             self.save()
 
+    def items_at(self, location=None):
+        """Return this character's LocationItem rows at `location`.
+
+        Defaults to the character's current location (an empty queryset if
+        the character has no current location). Rows are scoped to this
+        character: other characters' presence rows at the same location are
+        excluded.
+        """
+        if location is None:
+            location = self.current_location
+        return (
+            LocationItem.objects.for_character(self)
+            .filter(location=location)
+            .select_related("item")
+        )
+
+    def inventory_items(self):
+        """Return this character's InventoryItem rows, scoped to this character."""
+        return InventoryItem.objects.for_character(self).select_related("item")
+
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
+
+
+class PlayerScopedManager(models.Manager):
+    """Manager for player-scoped records (see PlayerScoped)."""
+
+    def for_character(self, pc):
+        """Return only the rows belonging to the given PlayerCharacter."""
+        return self.get_queryset().filter(pc=pc)
+
+
+class PlayerScoped(models.Model):
+    """Abstract base for records that tie game content to a specific player character.
+
+    The mirror image of GameAsset: GameAssets are game-scoped content with
+    stable identity (asset_id), whereas PlayerScoped models are player-scoped
+    state -- e.g., LocationItem records that a given character has an item at
+    a given location.
+
+    Concrete models inherit the `pc` field (or redeclare it to keep their own
+    related_name) and get `objects.for_character(pc)` for free, so game apps
+    don't have to reimplement per-character filtering for new state models.
+
+    Developer Usage:
+
+        class FoundNote(PlayerScoped):
+            location = models.ForeignKey(Location, on_delete=models.CASCADE)
+            text = models.TextField()
+
+        notes_for_pc = FoundNote.objects.for_character(pc)
+    """
+
+    pc = models.ForeignKey(PlayerCharacter, null=False, on_delete=models.CASCADE)
+
+    objects = PlayerScopedManager()
+
+    class Meta:
+        abstract = True
 
 
 class Item(GameAsset):
@@ -522,12 +579,14 @@ class Item(GameAsset):
         return self.graphic
 
 
-class LocationItem(models.Model):
+class LocationItem(PlayerScoped):
     """For a given player character and location, represents the presence of an item."""
 
     location = models.ForeignKey(
         Location, null=False, on_delete=models.CASCADE, related_name="items"
     )
+    # Redeclared (rather than inherited from PlayerScoped) to keep the
+    # existing related_name; the field definition is otherwise identical.
     pc = models.ForeignKey(
         PlayerCharacter,
         null=False,
@@ -542,9 +601,11 @@ class LocationItem(models.Model):
         return f"LocationItem({self.item.name}, {self.location}, {self.pc})"
 
 
-class InventoryItem(models.Model):
+class InventoryItem(PlayerScoped):
     """For a given player character represents the presence of an item in the inventory."""
 
+    # Redeclared (rather than inherited from PlayerScoped) to keep the
+    # existing related_name; the field definition is otherwise identical.
     pc = models.ForeignKey(
         PlayerCharacter, null=False, on_delete=models.CASCADE, related_name="inventory"
     )
