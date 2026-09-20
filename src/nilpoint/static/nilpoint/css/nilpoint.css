@@ -151,3 +151,11 @@ img.fade {
     -webkit-mask:
         url("/static/nilpoint/nilpoint-glyph.svg") no-repeat center / contain;
 }
+
+/* Take/Drop action links in item lists */
+.nilpoint-item-action-link {
+    display: inline;
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+}

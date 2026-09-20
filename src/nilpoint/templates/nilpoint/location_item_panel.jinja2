@@ -17,6 +17,14 @@
                        hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ location_item.item.id }}"
                        hx-target="#nilpoint-item-detail-panel"
                        hx-swap="innerHTML">Detail</a>
+                    {% if location_item.item.can_take %}
+                        <a href="#"
+                           hx-post="{{ game.get_dispatch_url }}?action=take_item"
+                           hx-vals='{"location_item": "{{ location_item.id }}"}'
+                           hx-target="#nilpoint-item-detail-panel"
+                           hx-swap="innerHTML"
+                           class="nilpoint-item-action-link button-secondary">Take</a>
+                    {% endif %}
                 </li>
             {% empty %}
                 <li>None</li>

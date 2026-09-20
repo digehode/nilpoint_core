@@ -1,7 +1,15 @@
 from django.views.generic import View
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.shortcuts import redirect
-from .models import Game, Player, PlayerCharacter, Exit, Item
+from .models import (
+    Game,
+    Player,
+    PlayerCharacter,
+    Exit,
+    Item,
+    LocationItem,
+    InventoryItem,
+)
 from django.http import HttpResponse
 from .exceptions import NilpointMissingSlugException
 from .forms import NewPlayerCharacterForm
@@ -84,6 +92,8 @@ class NilpointGameBasic(View):
         "get_location_item_panel": "handle_get_location_item_panel",
         "get_inventory_panel": "handle_get_inventory_panel",
         "item_detail": "handle_item_detail",
+        "take_item": "handle_take_item",
+        "drop_item": "handle_drop_item",
     }
 
     def __init__(self, *args, **kwargs):
@@ -401,6 +411,157 @@ class NilpointGameBasic(View):
             "nilpoint/inventory_item_panel.jinja2#inventory_panel",
         )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_take_item(self, request, *args, **kwargs):
+        """Take a LocationItem into the player's inventory.
+
+        The LocationItem ID should be given as 'location_item' in the POST request.
+        Checks:
+        - The LocationItem belongs to the current player character
+        - The LocationItem is at the player's current location
+        - The Item has can_take=True
+        If valid, creates an InventoryItem for the player and deletes the LocationItem.
+        """
+        if request.method != "POST":
+            return HtmxTriggerResponse(
+                content="POST required", content_type="text/plain"
+            )
+
+        location_item_id = request.POST.get("location_item", None)
+        if location_item_id is None:
+            return HtmxTriggerResponse(
+                content="No location_item given in POST parameters",
+                content_type="text/plain",
+            )
+        try:
+            location_item_id = int(location_item_id)
+        except (TypeError, ValueError):
+            return HtmxTriggerResponse(
+                content="Invalid location_item id", content_type="text/plain"
+            )
+
+        pc = self.player_character
+        if pc is None:
+            return HtmxTriggerResponse(
+                content="No player character selected",
+                content_type="text/plain",
+            )
+
+        location_item = LocationItem.objects.filter(id=location_item_id, pc=pc).first()
+        if location_item is None:
+            return HtmxTriggerResponse(
+                content="Location item not found or not yours",
+                content_type="text/plain",
+            )
+
+        # Check the location matches player's current location
+        if location_item.location != pc.current_location:
+            return HtmxTriggerResponse(
+                content="Item is not at your current location",
+                content_type="text/plain",
+            )
+
+        # Check the item belongs to the current game
+        if location_item.item.game != self.game:
+            return HtmxTriggerResponse(
+                content="Item is not part of this game",
+                content_type="text/plain",
+            )
+
+        # Check can_take on the item
+        if not location_item.item.can_take:
+            return HtmxTriggerResponse(
+                content="This item cannot be taken",
+                content_type="text/plain",
+            )
+
+        # Create inventory item and delete location item
+        InventoryItem.objects.create(pc=pc, item=location_item.item)
+        location_item.delete()
+
+        response = HtmxTriggerResponse(
+            content=f"Took {location_item.item.name}",
+            content_type="text/plain",
+        )
+        response.add_trigger("player_location_changed")
+        return response
+
+    def handle_drop_item(self, request, *args, **kwargs):
+        """Drop an InventoryItem at the player's current location.
+
+        The InventoryItem ID should be given as 'inventory_item' in the POST request.
+        Checks:
+        - The InventoryItem belongs to the current player character
+        - The Item has can_drop=True
+        - The player has a current location
+        If valid, creates a LocationItem at the current location and deletes the InventoryItem.
+        """
+        if request.method != "POST":
+            return HtmxTriggerResponse(
+                content="POST required", content_type="text/plain"
+            )
+
+        inventory_item_id = request.POST.get("inventory_item", None)
+        if inventory_item_id is None:
+            return HtmxTriggerResponse(
+                content="No inventory_item given in POST parameters",
+                content_type="text/plain",
+            )
+        try:
+            inventory_item_id = int(inventory_item_id)
+        except (TypeError, ValueError):
+            return HtmxTriggerResponse(
+                content="Invalid inventory_item id", content_type="text/plain"
+            )
+
+        pc = self.player_character
+        if pc is None:
+            return HtmxTriggerResponse(
+                content="No player character selected",
+                content_type="text/plain",
+            )
+
+        if pc.current_location is None:
+            return HtmxTriggerResponse(
+                content="You are not at a location",
+                content_type="text/plain",
+            )
+
+        inventory_item = InventoryItem.objects.filter(
+            id=inventory_item_id, pc=pc
+        ).first()
+        if inventory_item is None:
+            return HtmxTriggerResponse(
+                content="Inventory item not found or not yours",
+                content_type="text/plain",
+            )
+
+        # Check the item belongs to the current game
+        if inventory_item.item.game != self.game:
+            return HtmxTriggerResponse(
+                content="Item is not part of this game",
+                content_type="text/plain",
+            )
+
+        # Check can_drop on the item
+        if not inventory_item.item.can_drop:
+            return HtmxTriggerResponse(
+                content="This item cannot be dropped",
+                content_type="text/plain",
+            )
+
+        # Create location item and delete inventory item
+        LocationItem.objects.create(
+            location=pc.current_location, pc=pc, item=inventory_item.item
+        )
+        inventory_item.delete()
+
+        response = HtmxTriggerResponse(
+            content=f"Dropped {inventory_item.item.name}",
+            content_type="text/plain",
+        )
+        response.add_trigger("player_location_changed")
+        return response
 
     def handle_item_detail(self, request, *args, **kwargs):
         """Return the detail view of a single item (graphic, name, description).

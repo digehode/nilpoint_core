@@ -16,6 +16,14 @@
                    hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ inventory_item.item.id }}"
                    hx-target="#nilpoint-item-detail-panel"
                    hx-swap="innerHTML">Detail</a>
+                {% if inventory_item.item.can_drop %}
+                    <a href="#"
+                       hx-post="{{ game.get_dispatch_url }}?action=drop_item"
+                       hx-vals='{"inventory_item": "{{ inventory_item.id }}"}'
+                       hx-target="#nilpoint-item-detail-panel"
+                       hx-swap="innerHTML"
+                       class="nilpoint-item-action-link button-secondary">Drop</a>
+                {% endif %}
             </li>
         {% empty %}
             <li>None</li>
