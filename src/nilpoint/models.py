@@ -571,6 +571,19 @@ class Item(GameAsset):
         help_text="Static path for the graphic", max_length=100, null=True, blank=True
     )
 
+    can_take = models.BooleanField(
+        help_text="True if an item can be added to a player inventory",
+        null=False,
+        blank=False,
+        default=True,
+    )
+    can_drop = models.BooleanField(
+        help_text="True if an item can be moved from a player inventory to the current location",
+        null=False,
+        blank=False,
+        default=True,
+    )
+
     @property
     def graphic_safe(self):
         """Get the path to the graphic, or the default if unavailable"""
