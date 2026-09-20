@@ -578,6 +578,9 @@ class Item(GameAsset):
             return self.game.default_item_graphic
         return self.graphic
 
+    def __str__(self):
+        return f"Item({self.name}) in game {self.game.nilpoint_slug}"
+
 
 class LocationItem(PlayerScoped):
     """For a given player character and location, represents the presence of an item."""
@@ -612,3 +615,6 @@ class InventoryItem(PlayerScoped):
     item = models.ForeignKey(
         Item, null=False, on_delete=models.CASCADE, related_name="inventories"
     )
+
+    def __str__(self):
+        return f"InventoryItem({self.item.name}, {self.pc})"
