@@ -26,9 +26,7 @@ class NilpointSettingsTests(TestCase):
         self.assertEqual(res2, "nilpoint.PlayerCharacter")
 
     def test_games_returns_model_classes_from_user_settings(self):
-        # Provide the 'model' names expected by the code path (ContentType.model)
-        # For the Game model the ContentType.model is usually 'game'
-        ct = ContentType.objects.get_for_model
+
         # Build settings referencing the Game model by its content type model string
         game_ct = ContentType.objects.get_for_model(__import__("nilpoint").models.Game)
         nilpoint_settings.user_settings = {"games": [game_ct.model]}

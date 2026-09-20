@@ -1,0 +1,24 @@
+{% load static i18n %}
+{% partialdef inventory_panel %}
+    <h1>Inventory</h1>
+    <ul id="nilpoint-inventory-list">
+        {% for inventory_item in player_character.inventory_items.all %}
+            <li>
+                {% if inventory_item.item.graphic_safe %}
+                    <img class="nilpoint-item-thumb"
+                         src="{% static inventory_item.item.graphic_safe %}"
+                         width="24"
+                         height="24"
+                         alt="{{ inventory_item.item.name }}">
+                {% endif %}
+                {{ inventory_item.item.name }}
+                <a href="{{ game.get_dispatch_url }}?action=item_detail&item={{ inventory_item.item.id }}"
+                   hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ inventory_item.item.id }}"
+                   hx-target="#nilpoint-item-detail-panel"
+                   hx-swap="innerHTML">Detail</a>
+            </li>
+        {% empty %}
+            <li>None</li>
+        {% endfor %}
+    </ul>
+{% endpartialdef %}

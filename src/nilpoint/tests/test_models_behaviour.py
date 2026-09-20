@@ -11,7 +11,9 @@ User = get_user_model()
 class ModelsBehaviourTests(TestCase):
     def setUp(self):
         # Create user/player
-        self.user = User.objects.create_user(username=f"u_{uuid4().hex[:6]}", password="pw")
+        self.user = User.objects.create_user(
+            username=f"u_{uuid4().hex[:6]}", password="pw"
+        )
         self.player = models.Player.objects.create(user=self.user)
 
         # Unique game instance to avoid any asset_id collisions
@@ -48,7 +50,9 @@ class ModelsBehaviourTests(TestCase):
         self.assertEqual(self.game.get_dispatch_url(), expected)
 
     def test_get_player_characters_returns_empty_if_no_player(self):
-        no_player_user = User.objects.create_user(username=f"nop_{uuid4().hex[:6]}", password="pw")
+        no_player_user = User.objects.create_user(
+            username=f"nop_{uuid4().hex[:6]}", password="pw"
+        )
         chars = self.game.get_player_characters(no_player_user, self.game)
         self.assertEqual(list(chars), [])
 
@@ -107,7 +111,9 @@ class ModelsBehaviourTests(TestCase):
             game=self.game,
             initial=False,
         )
-        pc = models.PlayerCharacter.objects.create(handle=f"pc_{uuid4().hex[:6]}", player=self.player, game=self.game)
+        pc = models.PlayerCharacter.objects.create(
+            handle=f"pc_{uuid4().hex[:6]}", player=self.player, game=self.game
+        )
         li = models.LocationItem.objects.create(location=loc, pc=pc, item=item)
         s = str(li)
         self.assertIn("LocationItem", s)
@@ -116,13 +122,23 @@ class ModelsBehaviourTests(TestCase):
 
     def test_exit_create_two_way_exit_success_and_cross_game_error(self):
         l1 = models.Location.objects.create(
-            asset_id=f"e1_{uuid4().hex[:6]}", name="A", description="", game=self.game, initial=False
+            asset_id=f"e1_{uuid4().hex[:6]}",
+            name="A",
+            description="",
+            game=self.game,
+            initial=False,
         )
         l2 = models.Location.objects.create(
-            asset_id=f"e2_{uuid4().hex[:6]}", name="B", description="", game=self.game, initial=False
+            asset_id=f"e2_{uuid4().hex[:6]}",
+            name="B",
+            description="",
+            game=self.game,
+            initial=False,
         )
 
-        e1, e2 = models.Exit.create_two_way_exit(l1, "east", l2, "west", f"ex_{uuid4().hex[:4]}")
+        e1, e2 = models.Exit.create_two_way_exit(
+            l1, "east", l2, "west", f"ex_{uuid4().hex[:4]}"
+        )
         self.assertTrue(e1.pk and e2.pk)
         self.assertTrue(e1.asset_id.endswith("_A"))
         self.assertTrue(e2.asset_id.endswith("_B"))
@@ -135,7 +151,11 @@ class ModelsBehaviourTests(TestCase):
             allow_multiple_characters=False,
         )
         l3 = models.Location.objects.create(
-            asset_id=f"o_{uuid4().hex[:6]}", name="C", description="", game=other_game, initial=False
+            asset_id=f"o_{uuid4().hex[:6]}",
+            name="C",
+            description="",
+            game=other_game,
+            initial=False,
         )
         with self.assertRaises(ValueError):
             models.Exit.create_two_way_exit(l1, "n", l3, "s", f"bad_{uuid4().hex[:4]}")
@@ -162,7 +182,9 @@ class GetModelAppsCallTests(TestCase):
 
 class GameRealInstanceTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username=f"gr_{uuid4().hex[:6]}", password="pw")
+        self.user = User.objects.create_user(
+            username=f"gr_{uuid4().hex[:6]}", password="pw"
+        )
         self.game = models.Game.objects.create(
             instance_name="GI",
             instance_description="desc",
@@ -183,7 +205,9 @@ class GameRealInstanceTests(TestCase):
 
 class GetPlayerCharactersAndPCUpdateTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username=f"pcu_{uuid4().hex[:6]}", password="pw")
+        self.user = User.objects.create_user(
+            username=f"pcu_{uuid4().hex[:6]}", password="pw"
+        )
         self.player = models.Player.objects.create(user=self.user)
         self.game = models.Game.objects.create(
             instance_name="GPC",
@@ -193,15 +217,21 @@ class GetPlayerCharactersAndPCUpdateTests(TestCase):
         )
 
     def test_get_player_characters_returns_characters_for_player(self):
-        pc1 = models.PlayerCharacter.objects.create(handle="pc1", player=self.player, game=self.game)
-        pc2 = models.PlayerCharacter.objects.create(handle="pc2", player=self.player, game=self.game)
+        pc1 = models.PlayerCharacter.objects.create(
+            handle="pc1", player=self.player, game=self.game
+        )
+        pc2 = models.PlayerCharacter.objects.create(
+            handle="pc2", player=self.player, game=self.game
+        )
         chars = list(self.game.get_player_characters(self.user, self.game))
         ids = {c.pk for c in chars}
         self.assertIn(pc1.pk, ids)
         self.assertIn(pc2.pk, ids)
 
     def test_playercharacter_update_release_noop_when_current_equals_game(self):
-        pc = models.PlayerCharacter.objects.create(handle="pc_noop", player=self.player, game=self.game)
+        pc = models.PlayerCharacter.objects.create(
+            handle="pc_noop", player=self.player, game=self.game
+        )
         # ensure both releases equal (defaults are 0)
         pc.release = 0
         pc.save()

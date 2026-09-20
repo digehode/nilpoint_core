@@ -155,7 +155,11 @@ class UpdateMechanismTests(TestCase):
         # Inspect migration map for debugging: ensure target 1 is not present.
         migration_map = self.game._get_migration_map()
         # Provide a clearer failure message if the environment is polluted.
-        self.assertNotIn(1, migration_map, msg=f"Unexpected migration step for release 1 found: {list(migration_map.keys())}")
+        self.assertNotIn(
+            1,
+            migration_map,
+            msg=f"Unexpected migration step for release 1 found: {list(migration_map.keys())}",
+        )
 
         # Verify behavior: since release 1 is missing, update_release should raise NotImplementedError
         with self.assertRaises(NotImplementedError):

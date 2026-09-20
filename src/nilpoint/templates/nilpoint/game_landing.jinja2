@@ -40,6 +40,12 @@
              hx-target="this"
              hx-swap="innerHTML"></div>
         {# nilpoint-location-item-panel #}
+        <div id="nilpoint-inventory-panel"
+             hx-get="{{ game.get_dispatch_url }}?action=get_inventory_panel"
+             hx-trigger="load, player_character_changed from:body, player_location_changed from:body"
+             hx-target="this"
+             hx-swap="innerHTML"></div>
+        {# nilpoint-inventory-panel #}
         <div id="nilpoint-item-detail-panel"></div>
         {# nilpoint-item-detail-panel #}
         <div id="deck-debug"

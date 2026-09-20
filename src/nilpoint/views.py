@@ -82,6 +82,7 @@ class NilpointGameBasic(View):
         "get_player_location_panel": "handle_get_player_location_panel",
         "use_exit": "handle_use_exit",
         "get_location_item_panel": "handle_get_location_item_panel",
+        "get_inventory_panel": "handle_get_inventory_panel",
         "item_detail": "handle_item_detail",
     }
 
@@ -390,6 +391,15 @@ class NilpointGameBasic(View):
             "nilpoint/location_item_panel.jinja2#location_item_panel",
         )
 
+        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def handle_get_inventory_panel(self, request, *args, **kwargs):
+        """Return the list of items in the player's inventory."""
+        context = {}
+        partial = self._value_from_subclass_or_default(
+            "inventory_panel",
+            "nilpoint/inventory_item_panel.jinja2#inventory_panel",
+        )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
     def handle_item_detail(self, request, *args, **kwargs):
