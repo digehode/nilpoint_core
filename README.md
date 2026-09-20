@@ -65,10 +65,24 @@ GameAsset is an abstract class that classes related to a game inherit from. The 
 
 For example, we may need to give each new PlayerCharacter an Item. The Item will exist, but the unique DB key is likely to be different on the production system than it was on the developer system.  The name of the item may also have changed since the game was instantiated.  When the Item was created, along side the user-facing data such as it's name and description, and in addition to the automatic DB id assignment, it would have been given an asset_id, dictated by the GameAsset class.  The Game class has a `get_asset` method that will find the right object based on this ID, restricted to objects related to the current game instance.
 
-### PlayerScoped - TODO
+### PlayerScoped
 
-- PlayerScopedManager - object manage
-- PlayerScoped, augments subclasses to provide link to player character and use PlayerScopedManager to simplify limiting queries by player character
+`PlayerScoped` is an abstract base class (mirror of `GameAsset`) for player-scoped state records like `LocationItem` and `InventoryItem`. It provides:
+
+- A `pc` ForeignKey to `PlayerCharacter` (guaranteed on all subclasses)
+- `PlayerScopedManager` with `for_character(pc)` method for scoped queries
+- Convenience methods on `PlayerCharacter`: `items_at(location)` and `inventory_items()`
+
+New game state models should subclass `PlayerScoped` rather than reimplementing per-character filtering.
+
+### Item take/drop mechanics
+
+Items support optional taking/dropping via `can_take` and `can_drop` boolean fields (default `True`). The core views provide:
+
+- `handle_take_item` — POST `location_item` ID; validates ownership, current location, and `can_take=True`; creates `InventoryItem`, deletes `LocationItem`
+- `handle_drop_item` — POST `inventory_item` ID; validates ownership, current location exists, and `can_drop=True`; creates `LocationItem` at current location, deletes `InventoryItem`
+
+Both return `HtmxTriggerResponse` with `player_location_changed` trigger to refresh the location item and inventory panels.
 
 ## Game archetypes and model overrides
 
@@ -134,6 +148,7 @@ The core view's `_value_from_subclass_or_default(name, default)` method does the
 | `handle_get_location_graphic` | `location_graphic_partial` | `nilpoint/location_panel.jinja2#location_graphic` |
 | `handle_get_player_location_panel` | `player_location_panel` | `nilpoint/player_location_panel.jinja2#player_location_panel` |
 | `handle_get_location_item_panel` | `location_item_panel` | `nilpoint/location_item_panel.jinja2#location_item_panel` |
+| `handle_get_inventory_panel` | `inventory_panel` | `nilpoint/inventory_item_panel.jinja2#inventory_panel` |
 | `handle_item_detail` | `item_detail_partial` | `nilpoint/location_item_panel.jinja2#item_detail` |
 | `handle_new_player_character` | `new_player_character_partial` | `nilpoint/new_player_character.jinja2#new_player_character` |
 | `handle_new_player_character` | `new_player_character_submit` | auto-derived dispatch URL |
