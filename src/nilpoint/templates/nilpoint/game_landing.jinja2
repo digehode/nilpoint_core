@@ -1,58 +1,15 @@
 {% load static i18n %}
+{% load nilpoint_tags %}
 {% partialdef landing %}
     <div id="nilpoint-game-container">
         <h1>You are playing {{ game.instance_name }}</h1>
-        <div id="nilpoint-character-panel"
-             hx-get="{{ game.get_dispatch_url }}?action=player_selection_panel"
-             hx-trigger="load, player_character_changed from:body"
-             hx-target="this">
-            <img alt="Result loading..."
-                 class="htmx-indicator"
-                 width="100"
-                 height="100"
-                 src="{% static 'nilpoint/ui_elements/blocks-shuffle-5.svg' %}" />
-        </div>
-        {# nilpoint-character-panel #}
-        <div id="nilpoint-scene"
-             hx-get="{{ game.get_dispatch_url }}?action=get_location_graphic"
-             hx-trigger="load, player_location_changed from:body, player_character_changed from:body"
-             hx-target="this">
-            <img alt="Result loading..."
-                 width="100"
-                 height="100"
-                 src="{% static 'nilpoint/ui_elements/blocks-shuffle-5.svg' %}" />
-        </div>
-        {# nilpoint-scene #}
-        <div id="nilpoint-controls"
-             hx-get="{{ game.get_dispatch_url }}?action=get_player_location_panel"
-             hx-trigger="load, player_character_changed from:body, player_location_changed from:body"
-             hx-target="this"
-             hx-swap="innerHTML">
-            <img alt="Result loading..."
-                 class="htmx-indicator"
-                 width="100"
-                 height="100"
-                 src="{% static 'nilpoint/ui_elements/blocks-shuffle-5.svg' %}" />
-        </div>
-        <div id="nilpoint-location-item-panel"
-             hx-get="{{ game.get_dispatch_url }}?action=get_location_item_panel"
-             hx-trigger="load, player_character_changed from:body, player_location_changed from:body"
-             hx-target="this"
-             hx-swap="innerHTML"></div>
-        {# nilpoint-location-item-panel #}
-        <div id="nilpoint-inventory-panel"
-             hx-get="{{ game.get_dispatch_url }}?action=get_inventory_panel"
-             hx-trigger="load, player_character_changed from:body, player_location_changed from:body"
-             hx-target="this"
-             hx-swap="innerHTML"></div>
-        {# nilpoint-inventory-panel #}
+        {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
+        {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body" %}
+        {% nilpoint_panel "nilpoint-controls" "get_player_location_panel" triggers="load, player_character_changed from:body, player_location_changed from:body" %}
+        {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, player_location_changed from:body" %}
+        {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, player_location_changed from:body" %}
         <div id="nilpoint-item-detail-panel"></div>
-        {# nilpoint-item-detail-panel #}
-        <div id="deck-debug"
-             hx-get="{{ game.get_dispatch_url }}?action=deck"
-             hx-target="this"
-             hx-trigger="load, player_character_changed from:body">testing deck</div>
-        {# deck-debug #}
+        {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %}
     </div>
     {# nilpoint-game-container #}
 {% endpartialdef %}

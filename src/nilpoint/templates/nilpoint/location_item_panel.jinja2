@@ -1,4 +1,5 @@
 {% load static i18n %}
+{% load nilpoint_tags %}
 {% partialdef location_item_panel %}
     {% if player_character.current_location %}
         <h1>Items</h1>
@@ -13,17 +14,9 @@
                              alt="{{ location_item.item.name }}">
                     {% endif %}
                     {{ location_item.item.name }}
-                    <a href="{{ game.get_dispatch_url }}?action=item_detail&item={{ location_item.item.id }}"
-                       hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ location_item.item.id }}"
-                       hx-target="#nilpoint-item-detail-panel"
-                       hx-swap="innerHTML">Detail</a>
+                    {% nilpoint_action "Detail" "item_detail" item=location_item.item.id target="#nilpoint-item-detail-panel" %}
                     {% if location_item.item.can_take %}
-                        <a href="#"
-                           hx-post="{{ game.get_dispatch_url }}?action=take_item"
-                           hx-vals='{"location_item": "{{ location_item.id }}"}'
-                           hx-target="#nilpoint-item-detail-panel"
-                           hx-swap="innerHTML"
-                           class="nilpoint-item-action-link button-secondary">Take</a>
+                        {% nilpoint_action "Take" "take_item" method="POST" location_item=location_item.id %}
                     {% endif %}
                 </li>
             {% empty %}

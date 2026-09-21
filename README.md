@@ -155,6 +155,36 @@ The core view's `_value_from_subclass_or_default(name, default)` method does the
 
 This keeps handler logic in core while letting game apps swap templates freely.
 
+### Template Tags for HTMX Patterns
+
+Nilpoint provides template tags in `nilpoint_tags` to simplify common HTMX patterns:
+
+```jinja2
+{% load nilpoint_tags %}
+
+{# Panel that loads via GET on trigger #}
+{% nilpoint_panel "nilpoint-scene" "get_location_graphic"
+   triggers="load, player_location_changed from:body" %}
+
+{# Action link with correct HTTP method #}
+{% nilpoint_action "Detail" "item_detail" item=item.id
+   target="#nilpoint-item-detail-panel" %}
+{% nilpoint_action "Take" "take_item" method="post" location_item=li.id %}
+
+{# Form that GETs on load, POSTs on submit #}
+{% nilpoint_form "new-pc-form" "new_player_character" %}
+```
+
+**Available tags:**
+
+| Tag | Purpose | Key Parameters |
+|-----|---------|----------------|
+| `nilpoint_panel` | HTMX panel div (GET) | `panel_id`, `action`, `triggers`, `target`, `swap` |
+| `nilpoint_action` | Action link/button | `text`, `action`, `method`, `target`, `swap`, `classes` |
+| `nilpoint_form` | Form (GET+POST) | `form_id`, `action`, `method`, `target`, `swap` |
+
+All tags auto-generate the dispatch URL from the `game` in context.
+
 ### NILPOINT_SETTINGS usage example - TODO
 - Overriding PlayerCharacter or other core models
 - Registering game content types

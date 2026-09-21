@@ -1,4 +1,5 @@
 {% load static i18n %}
+{% load nilpoint_tags %}
 {% partialdef player_location_panel %}
     <div id="nilpoint-player-location-panel">
         {% if player_character.current_location %}
@@ -10,9 +11,7 @@
                 <h1>Exits</h1>
                 <p>
                     {% for e in player_character.current_location.exits.all %}
-                        <a href="#"
-                           hx-post="{{ game.get_dispatch_url }}?action=use_exit"
-                           hx-vals='{"exit": "{{ e.id }}"}'>{{ e.name }}</a>
+                        {% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}
                     {% empty %} None
                     {% endfor %}
                 </p>

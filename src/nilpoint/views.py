@@ -17,9 +17,8 @@ from functools import wraps
 import json
 from .models import get_model
 from django.template.loader import render_to_string
+from .decorators import require_http_methods
 
-# TODO: decorators for GET only handlers, POST only or both?
-# TODO: create "requires player character" decorator for reuse in game views
 
 # TODO: Allow Exit objects to be subclassed - use same settings as other subclassed things
 
@@ -95,6 +94,14 @@ class NilpointGameBasic(View):
         "take_item": "handle_take_item",
         "drop_item": "handle_drop_item",
     }
+
+    @classmethod
+    def get_valid_actions(cls):
+        """Return set of valid action names for this view class."""
+        actions = set(cls._handlers.keys())
+        if hasattr(cls, "handlers"):
+            actions.update(cls.handlers.keys())
+        return actions
 
     def __init__(self, *args, **kwargs):
         """Combine subclass handlers with the _handlers dict"""
@@ -254,6 +261,7 @@ class NilpointGameBasic(View):
 
         return _get_post_common
 
+    @require_http_methods("POST")
     def handle_select_player_character(self, request, *args, **kwargs):
         selected_pc = request.POST.get("player_character", None)
         if selected_pc == "-1":
@@ -328,6 +336,7 @@ class NilpointGameBasic(View):
         else:
             return default
 
+    @require_http_methods("GET")
     def handle_overview(self, request, *args, **kwargs):
         """Page overview
 
@@ -340,6 +349,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context={}, *args, **kwargs)
 
+    @require_http_methods("GET")
     def handle_player_selection_panel(self, request, *args, **kwargs):
         """Player character selection panel
 
@@ -353,6 +363,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context={}, *args, **kwargs)
 
+    @require_http_methods("GET")
     def handle_get_location_graphic(self, request, *args, **kwargs):
         """Return the content of the graphic display area
 
@@ -379,6 +390,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
+    @require_http_methods("GET")
     def handle_get_player_location_panel(self, request, *args, **kwargs):
         """Return the content of the location control panel
 
@@ -393,6 +405,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
+    @require_http_methods("GET")
     def handle_get_location_item_panel(self, request, *args, **kwargs):
         """Return the list of items at the current location"""
         context = {}
@@ -403,6 +416,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
+    @require_http_methods("GET")
     def handle_get_inventory_panel(self, request, *args, **kwargs):
         """Return the list of items in the player's inventory."""
         context = {}
@@ -412,6 +426,7 @@ class NilpointGameBasic(View):
         )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
+    @require_http_methods("POST")
     def handle_take_item(self, request, *args, **kwargs):
         """Take a LocationItem into the player's inventory.
 
@@ -422,11 +437,6 @@ class NilpointGameBasic(View):
         - The Item has can_take=True
         If valid, creates an InventoryItem for the player and deletes the LocationItem.
         """
-        if request.method != "POST":
-            return HtmxTriggerResponse(
-                content="POST required", content_type="text/plain"
-            )
-
         location_item_id = request.POST.get("location_item", None)
         if location_item_id is None:
             return HtmxTriggerResponse(
@@ -486,6 +496,7 @@ class NilpointGameBasic(View):
         response.add_trigger("player_location_changed")
         return response
 
+    @require_http_methods("POST")
     def handle_drop_item(self, request, *args, **kwargs):
         """Drop an InventoryItem at the player's current location.
 
@@ -496,11 +507,6 @@ class NilpointGameBasic(View):
         - The player has a current location
         If valid, creates a LocationItem at the current location and deletes the InventoryItem.
         """
-        if request.method != "POST":
-            return HtmxTriggerResponse(
-                content="POST required", content_type="text/plain"
-            )
-
         inventory_item_id = request.POST.get("inventory_item", None)
         if inventory_item_id is None:
             return HtmxTriggerResponse(
@@ -563,6 +569,7 @@ class NilpointGameBasic(View):
         response.add_trigger("player_location_changed")
         return response
 
+    @require_http_methods("GET", "POST")
     def handle_item_detail(self, request, *args, **kwargs):
         """Return the detail view of a single item (graphic, name, description).
 
@@ -599,6 +606,7 @@ class NilpointGameBasic(View):
         )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
+    @require_http_methods("POST")
     def handle_use_exit(self, request, *args, **kwargs):
         """Change the player character's location by using an exit. The ID of the exit should be given as 'exit' in the post request."""
 
@@ -634,6 +642,7 @@ class NilpointGameBasic(View):
         response.add_trigger(trigger_name="player_location_changed")
         return response
 
+    @require_http_methods("GET")
     def handle_landing(self, request, *args, **kwargs):
         """Landing page. This is the first page seen when accessing
         the game instance, and is the orchestrator of all others.
@@ -649,6 +658,7 @@ class NilpointGameBasic(View):
 
         return self.nilpoint_render(request, partial, context={}, *args, **kwargs)
 
+    @require_http_methods("GET", "POST")
     def handle_new_player_character(self, request, *args, **kwargs):
         """Handles new player character creation. By default, displays
         a form on a GET request and processes it on POST.
@@ -736,6 +746,7 @@ class NilpointGameBasic(View):
             content="Method not implemented", content_type="text/plain"
         )
 
+    @require_http_methods("GET")
     def debug(self, request, *args, **kwargs):
         """Debug view, can be used to drop in to places before the
         views are ready, ensuring everythng else is doing what is

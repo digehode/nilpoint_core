@@ -1,3 +1,4 @@
+{% load nilpoint_tags %}
 {% partialdef new_player_character %}
     <h1>New Player Character for {{ game.instance_name }}</h1>
     {% if message %}
@@ -19,15 +20,6 @@
             you need to create a player character. This is your in-game
             identity.
         </p>
-        <form action="{{ submit_url }}"
-              method="post"
-              hx-post="{{ game.get_dispatch_url }}?action=new_player_character"
-              hx-target="#nilpoint-character-panel"
-              hx-swap="inner"
-              id="form-container">
-            {% csrf_token %}
-            {{ form }}
-            <input type="submit" value="Create Player Character">
-        </form>
+        {% nilpoint_form "form-container" "new_player_character" form=form target="#nilpoint-character-panel" %}
     {% endif %}
 {% endpartialdef %}

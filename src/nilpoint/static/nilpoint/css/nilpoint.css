@@ -36,9 +36,9 @@ img.fade {
     height: 15rem;
 }
 
-#nilpoint-character-panel {
-    height: 10rem;
-}
+/* #nilpoint-character-panel { */
+/*     height: rem; */
+/* } */
 
 #nilpoint-scene {
     width: 100%;

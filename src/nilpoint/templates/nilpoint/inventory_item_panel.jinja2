@@ -1,4 +1,5 @@
 {% load static i18n %}
+{% load nilpoint_tags %}
 {% partialdef inventory_panel %}
     <h1>Inventory</h1>
     <ul id="nilpoint-inventory-list">
@@ -12,17 +13,9 @@
                          alt="{{ inventory_item.item.name }}">
                 {% endif %}
                 {{ inventory_item.item.name }}
-                <a href="{{ game.get_dispatch_url }}?action=item_detail&item={{ inventory_item.item.id }}"
-                   hx-get="{{ game.get_dispatch_url }}?action=item_detail&item={{ inventory_item.item.id }}"
-                   hx-target="#nilpoint-item-detail-panel"
-                   hx-swap="innerHTML">Detail</a>
+                {% nilpoint_action "Detail" "item_detail" item=inventory_item.item.id target="#nilpoint-item-detail-panel" %}
                 {% if inventory_item.item.can_drop %}
-                    <a href="#"
-                       hx-post="{{ game.get_dispatch_url }}?action=drop_item"
-                       hx-vals='{"inventory_item": "{{ inventory_item.id }}"}'
-                       hx-target="#nilpoint-item-detail-panel"
-                       hx-swap="innerHTML"
-                       class="nilpoint-item-action-link button-secondary">Drop</a>
+                    {% nilpoint_action "Drop" "drop_item" method="POST" inventory_item=inventory_item.id %}
                 {% endif %}
             </li>
         {% empty %}

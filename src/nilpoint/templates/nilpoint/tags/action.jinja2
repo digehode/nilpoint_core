@@ -1,0 +1,14 @@
+{% load nilpoint_tags %}
+<!-- djlint:off -->
+<!-- fmt:off -->
+{# djlint:off #}
+<a href="{{ url }}"
+       hx-{{ method|lower }}="{{ url }}"
+       {% if target %}         hx-target="{{ target }}"       {% endif %}
+       {% if hx_vals %}         hx-vals='{{ hx_vals }}'       {% endif %}
+       hx-swap="{{ swap }}"
+       class="{{ classes }}">       {% if text %}         {{ text }}       {% endif %}
+</a>
+{# djlint:on #}
+<!-- fmt:on -->
+<!-- djlint:on -->

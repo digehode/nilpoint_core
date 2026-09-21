@@ -258,7 +258,7 @@ class ItemTakeDropTests(TestCase):
 
         response = self._get_request("take_item", {"location_item": location_item.id})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("POST required", response.content.decode())
+        self.assertIn("Method GET not allowed", response.content.decode())
 
     def test_drop_get_request_fails(self):
         """GET request to drop_item returns error."""
@@ -266,7 +266,7 @@ class ItemTakeDropTests(TestCase):
 
         response = self._get_request("drop_item", {"inventory_item": inventory_item.id})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("POST required", response.content.decode())
+        self.assertIn("Method GET not allowed", response.content.decode())
 
     # ===== Missing/invalid parameters =====
 

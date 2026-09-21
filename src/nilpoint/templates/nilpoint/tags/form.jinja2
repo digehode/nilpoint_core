@@ -1,0 +1,11 @@
+{% load nilpoint_tags %}
+<form id="{{ form_id }}"
+      hx-post="{{ url }}"
+      {% if target %}hx-target="{{ target }}"{% endif %}
+      hx-swap="{{ swap }}">
+    {% csrf_token %}
+    {% if form %}
+        {{ form }}
+    {% endif %}
+    <button type="submit">Submit</button>
+</form>

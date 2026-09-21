@@ -1,0 +1,13 @@
+{% load nilpoint_tags %}
+{% load static i18n %}
+<div id="{{ panel_id }}"
+     hx-get="{{ url }}"
+     hx-trigger="{{ triggers }}"
+     hx-target="{{ target }}"
+     hx-swap="{{ swap }}">
+    <img alt="Loading..."
+         class="htmx-indicator"
+         width="100"
+         height="100"
+         src="{% static 'nilpoint/ui_elements/blocks-shuffle-5.svg' %}" />
+</div>
