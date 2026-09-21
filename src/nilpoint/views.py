@@ -602,7 +602,7 @@ class NilpointGameBasic(View):
         context = {"item": item}
         partial = self._value_from_subclass_or_default(
             "item_detail_partial",
-            "nilpoint/location_item_panel.jinja2#item_detail",
+            "nilpoint/item_detail_panel.jinja2#item_detail",
         )
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 

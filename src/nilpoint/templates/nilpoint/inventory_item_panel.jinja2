@@ -5,13 +5,7 @@
     <ul id="nilpoint-inventory-list">
         {% for inventory_item in player_character.inventory_items.all %}
             <li>
-                {% if inventory_item.item.graphic_safe %}
-                    <img class="nilpoint-item-thumb"
-                         src="{% static inventory_item.item.graphic_safe %}"
-                         width="24"
-                         height="24"
-                         alt="{{ inventory_item.item.name }}">
-                {% endif %}
+                {% include "nilpoint/item_detail_panel.jinja2#item_icon" %}
                 {{ inventory_item.item.name }}
                 {% nilpoint_action "Detail" "item_detail" item=inventory_item.item.id target="#nilpoint-item-detail-panel" %}
                 {% if inventory_item.item.can_drop %}

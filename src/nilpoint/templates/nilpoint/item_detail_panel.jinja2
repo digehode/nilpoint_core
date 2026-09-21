@@ -1,0 +1,42 @@
+{% load static i18n %}
+{% load nilpoint_tags %}
+{% partialdef item_icon_x %}
+    <span class="nilpoint-inventory-slot">
+        <img class="nilpoint-item-thumb"
+             src="{% static current_item.graphic_safe %}"
+             width="64"
+             height="64"
+             alt="{{ current_item.name }}">
+    </span>
+{% endpartialdef %}
+{% partialdef item_icon %}
+    {% if item %}
+        {% with curremt_item=item %}
+            {% partial item_icon_x %}
+        {% endwith %}
+    {% elif inventory_item.item %}
+        {% with current_item=inventory_item.item %}
+            {% partial item_icon_x %}
+        {% endwith %}
+    {% elif location_item.item %}
+        {% with current_item=location_item.item %}
+            {% partial item_icon_x %}
+        {% endwith %}
+    {% endif %}
+{% endpartialdef %}
+{% partialdef item_detail %}
+    <div id="nilpoint-item-detail">
+        <div class="nilpoint-item-detail-graphic">
+            {% if item.graphic_safe %}
+                <img src="{% static item.graphic_safe %}"
+                     alt="{{ item.name }}"
+                     width="640"
+                     height="640">
+            {% endif %}
+        </div>
+        <div class="nilpoint-item-detail-text">
+            <h1>{{ item.name }}</h1>
+            <p>{{ item.description }}</p>
+        </div>
+    </div>
+{% endpartialdef %}

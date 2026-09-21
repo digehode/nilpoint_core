@@ -51,7 +51,7 @@ class ExitAdmin(admin.ModelAdmin):
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     model = Item
-    list_display = ["name", "asset_id"]
+    list_display = ["name", "asset_id", "graphic"]
 
 
 @admin.register(InventoryItem)
