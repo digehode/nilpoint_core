@@ -274,7 +274,19 @@ def nilpoint_interact_actions(
     can_hooks = hooks.get("can", {})
 
     actions = []
-    for action_name, hook_method in show_hooks.items():
+    for action_name, show_entry in show_hooks.items():
+        # Extract method name and label from show entry
+        if isinstance(show_entry, dict):
+            hook_method = show_entry.get("method")
+            label = show_entry.get("label", action_name.replace("_", " ").title())
+        elif isinstance(show_entry, str):
+            # Backward compat: simple string
+            hook_method = show_entry
+            label = action_name.replace("_", " ").title()
+        else:
+            hook_method = str(show_entry)
+            label = action_name.replace("_", " ").title()
+
         # Check can hook if present
         allowed = True
         if action_name in can_hooks:
@@ -285,10 +297,11 @@ def nilpoint_interact_actions(
                 except Exception:
                     allowed = False
 
-        if allowed:
+        if allowed and hook_method:
             actions.append(
                 {
                     "name": action_name,
+                    "label": label,
                     "hook_method": hook_method,
                     "item_type": item_type,
                     "object_id": instance.id,

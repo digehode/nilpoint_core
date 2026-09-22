@@ -586,7 +586,7 @@ class NilpointGameBasic(View):
         For "handle" phase: Executes the action and returns response.
         For "can" phase: Returns JSON {"allowed": true/false, "reason": "..."}.
 
-        The game instance's get_item_hooks(item) provides the hook method names.
+        get_item_hooks(item) provides the hook method names.
         """
         item_type = request.POST.get("item_type", None)
         object_id = request.POST.get("object_id", None)
@@ -650,11 +650,24 @@ class NilpointGameBasic(View):
 
         # Check if action exists for this phase
         phase_hooks = hooks.get(phase, {})
-        hook_method_name = phase_hooks.get(action)
-        if not hook_method_name:
+        hook_entry = phase_hooks.get(action)
+        if not hook_entry:
             return HtmxTriggerResponse(
                 content=f"No {phase} hook for action '{action}' on this item",
                 content_type="text/plain",
+            )
+
+        # Extract method name: show hooks are dicts with "method", others are strings
+        if phase == "show" and isinstance(hook_entry, dict):
+            hook_method_name = hook_entry.get("method")
+        elif isinstance(hook_entry, str):
+            hook_method_name = hook_entry
+        else:
+            # Backward compat for any other dict format
+            hook_method_name = (
+                hook_entry.get("method")
+                if isinstance(hook_entry, dict)
+                else str(hook_entry)
             )
 
         # Get the hook method
@@ -713,7 +726,11 @@ class NilpointGameBasic(View):
 
         elif phase == "handle":
             # Handle phase: execute the action, then render the show partial
-            # to display updated state
+            # to display updated state. Fall back to push_button show hook
+            # if the action doesn't have its own show hook (common pattern:
+            # multiple handle hooks share one show hook).
+
+            # First, execute the handle hook
             try:
                 hook_method(instance, request)
             except Exception as e:
@@ -727,9 +744,16 @@ class NilpointGameBasic(View):
             # if the action doesn't have its own show hook (common pattern:
             # multiple handle hooks share one show hook).
             show_hooks = hooks.get("show", {})
-            show_method_name = show_hooks.get(action)
-            if not show_method_name and "push_button" in show_hooks:
-                show_method_name = show_hooks["push_button"]
+            show_entry = show_hooks.get(action)
+            if not show_entry and "push_button" in show_hooks:
+                show_entry = show_hooks["push_button"]
+
+            show_method_name = None
+            if isinstance(show_entry, dict):
+                show_method_name = show_entry.get("method")
+            elif isinstance(show_entry, str):
+                # Backward compat: stored as simple string
+                show_method_name = show_entry
 
             if show_method_name:
                 show_method = getattr(real_game, show_method_name, None)

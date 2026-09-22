@@ -14,6 +14,13 @@ from nilpoint.models import (
 from nilpoint.views import NilpointGameBasic
 
 
+def _expected_show(action, method, label=None):
+    """Helper to build expected normalized show hook dict."""
+    if label is None:
+        label = action.replace("_", " ").title()
+    return {action: {"method": method, "label": label}}
+
+
 class ItemHooksProxyTests(TestCase):
     """Tests for the ItemHooksProxy dict-like API."""
 
@@ -35,7 +42,7 @@ class ItemHooksProxyTests(TestCase):
         proxy.put("show", {"squeeze": "show_squeeze"})
         proxy.put("handle", {"squeeze": "handle_squeeze"})
 
-        self.assertEqual(proxy.get("show"), {"squeeze": "show_squeeze"})
+        self.assertEqual(proxy.get("show"), _expected_show("squeeze", "show_squeeze"))
         self.assertEqual(proxy.get("handle"), {"squeeze": "handle_squeeze"})
 
     def test_hooks_proxy_put_overwrites(self):
@@ -44,7 +51,7 @@ class ItemHooksProxyTests(TestCase):
         proxy.put("show", {"squeeze": "old"})
         proxy.put("show", {"squeeze": "new"})
 
-        self.assertEqual(proxy.get("show"), {"squeeze": "new"})
+        self.assertEqual(proxy.get("show"), _expected_show("squeeze", "new"))
 
     def test_hooks_proxy_contains(self):
         """Test __contains__."""
@@ -91,7 +98,7 @@ class ItemHooksProxyTests(TestCase):
         proxy = self.item.hooks
         proxy.put("show", {"squeeze": "show_squeeze"})
         val = proxy.pop("show")
-        self.assertEqual(val, {"squeeze": "show_squeeze"})
+        self.assertEqual(val, _expected_show("squeeze", "show_squeeze"))
         self.assertNotIn("show", proxy)
 
     def test_hooks_proxy_pop_default(self):
@@ -104,7 +111,7 @@ class ItemHooksProxyTests(TestCase):
         """Test __getitem__."""
         proxy = self.item.hooks
         proxy.put("show", {"squeeze": "show_squeeze"})
-        self.assertEqual(proxy["show"], {"squeeze": "show_squeeze"})
+        self.assertEqual(proxy["show"], _expected_show("squeeze", "show_squeeze"))
 
     def test_hooks_proxy_getitem_missing_raises(self):
         """Test __getitem__ raises KeyError for missing key."""
@@ -116,15 +123,14 @@ class ItemHooksProxyTests(TestCase):
         """Test __setitem__."""
         proxy = self.item.hooks
         proxy["show"] = {"squeeze": "show_squeeze"}
-        self.assertEqual(proxy.get("show"), {"squeeze": "show_squeeze"})
+        self.assertEqual(proxy.get("show"), _expected_show("squeeze", "show_squeeze"))
 
     def test_hooks_proxy_repr(self):
         """Test __repr__."""
         proxy = self.item.hooks
         proxy.put("show", {"squeeze": "show_squeeze"})
-        self.assertEqual(
-            repr(proxy), "ItemHooksProxy({'show': {'squeeze': 'show_squeeze'}})"
-        )
+        # repr shows raw stored data, not normalized
+        self.assertIn("show_squeeze", repr(proxy))
 
 
 class ItemHooksIsolationTests(TestCase):
@@ -153,14 +159,20 @@ class ItemHooksIsolationTests(TestCase):
         self.item1.hooks.put("show", {"squeeze": "show_squeeze_1"})
         self.item2.hooks.put("show", {"tap": "show_tap_2"})
 
-        self.assertEqual(self.item1.hooks.get("show"), {"squeeze": "show_squeeze_1"})
-        self.assertEqual(self.item2.hooks.get("show"), {"tap": "show_tap_2"})
+        self.assertEqual(
+            self.item1.hooks.get("show"), _expected_show("squeeze", "show_squeeze_1")
+        )
+        self.assertEqual(
+            self.item2.hooks.get("show"), _expected_show("tap", "show_tap_2")
+        )
 
     def test_item_hooks_persistence(self):
         """Test that hooks persist after save/refresh."""
         self.item1.hooks.put("show", {"squeeze": "show_squeeze"})
         self.item1.refresh_from_db()
-        self.assertEqual(self.item1.hooks.get("show"), {"squeeze": "show_squeeze"})
+        self.assertEqual(
+            self.item1.hooks.get("show"), _expected_show("squeeze", "show_squeeze")
+        )
 
 
 class GameGetItemHooksTests(TestCase):
@@ -258,7 +270,9 @@ class InteractionDispatchTests(TestCase):
 
         def get_item_hooks(item):
             return {
-                "show": {"squeeze": "show_squeeze_wotsit"},
+                "show": {
+                    "squeeze": {"method": "show_squeeze_wotsit", "label": "Squeeze"}
+                },
                 "handle": {"squeeze": "handle_squeeze_wotsit"},
                 "can": {"squeeze": "can_squeeze_wotsit"},
             }

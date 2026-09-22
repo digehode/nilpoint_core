@@ -194,10 +194,14 @@ class Game(models.Model):
     def get_dispatch_url(self):
         """Get the dispatch URL for the game"""
         if self.nilpoint_slug is not None and self.nilpoint_slug != "":
-            return reverse(
-                f"{self._game_type}:dispatch",
-                kwargs={"nilpoint_slug": self.nilpoint_slug},
-            )
+            try:
+                return reverse(
+                    f"{self._game_type}:dispatch",
+                    kwargs={"nilpoint_slug": self.nilpoint_slug},
+                )
+            except Exception:
+                # Namespace not registered (e.g., base Game instances without subclass)
+                return "#"
         else:
             return "#"
 
@@ -315,7 +319,12 @@ class Game(models.Model):
         Returns:
             Dict with "show", "handle", "can" keys mapping to action->method dicts
         """
-        return {"show": {}, "handle": {}, "can": {}}
+        # Default: read hooks from the Item's persisted hooks_data
+        return {
+            "show": item.hooks.get("show", {}),
+            "handle": item.hooks.get("handle", {}),
+            "can": item.hooks.get("can", {}),
+        }
 
 
 class Player(models.Model):
@@ -599,17 +608,48 @@ class ItemStateProxy:
         return "|" + str(self._data) + "|"
 
 
+def _normalize_show_hooks(show_dict):
+    """Normalize show hooks to dict format with method and label.
+
+    Accepts:
+        {"action": "method_name"}                    -> {"action": {"method": "method_name", "label": "Action Name"}}
+        {"action": {"method": "...", "label": "..."}} -> unchanged (passed through)
+    """
+    if not isinstance(show_dict, dict):
+        return {}
+    normalized = {}
+    for action, value in show_dict.items():
+        if isinstance(value, str):
+            # Simple string: method name only, derive label from action
+            label = action.replace("_", " ").title()
+            normalized[action] = {"method": value, "label": label}
+        elif isinstance(value, dict):
+            # Already a dict with method/label
+            normalized[action] = value
+        else:
+            # Fallback: treat as method name string
+            normalized[action] = {
+                "method": str(value),
+                "label": action.replace("_", " ").title(),
+            }
+    return normalized
+
+
 class ItemHooksProxy:
     """Dict-like wrapper around Item.hooks (pickled dict).
 
     Stores interaction hooks as:
         {
-            "show": {"action_name": "hook_method_name"},
+            "show": {
+                "action_name": {"method": "hook_method_name", "label": "User Label"},
+            },
             "handle": {"action_name": "hook_method_name"},
             "can": {"action_name": "hook_method_name"},
         }
 
-    Each hook_method_name is a string that resolves to a method on the game instance.
+    Show hooks support both simple string (method name) and dict with
+    "method" and "label" keys. On read, strings are normalized to dicts
+    with auto-derived labels.
     """
 
     def __init__(self, item):
@@ -621,7 +661,10 @@ class ItemHooksProxy:
         self._item.save(update_fields=["hooks_data"])
 
     def get(self, key, default=None):
-        return self._data.get(key, default)
+        value = self._data.get(key, default)
+        if key == "show" and isinstance(value, dict):
+            return _normalize_show_hooks(value)
+        return value
 
     def put(self, key, value):
         self._data[key] = value
@@ -630,6 +673,8 @@ class ItemHooksProxy:
     def pop(self, key, default=None):
         val = self._data.pop(key, default)
         self._save()
+        if key == "show" and isinstance(val, dict):
+            return _normalize_show_hooks(val)
         return val
 
     def __contains__(self, key):
@@ -639,7 +684,10 @@ class ItemHooksProxy:
         return self._data.keys()
 
     def __getitem__(self, key):
-        return self._data[key]
+        value = self._data[key]
+        if key == "show" and isinstance(value, dict):
+            return _normalize_show_hooks(value)
+        return value
 
     def __setitem__(self, key, value):
         self.put(key, value)
