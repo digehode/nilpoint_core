@@ -37,6 +37,13 @@
         <div class="nilpoint-item-detail-text">
             <h1>{{ item.name }}</h1>
             <p>{{ item.description }}</p>
+            {% if debug %}
+                <h3>DEBUG</h3>
+                {% if state %}
+                    <p>has state: {{ state }}</p>
+                    <p>{{ state.keys }}</p>
+                {% endif %}
+            {% endif %}
         </div>
     </div>
 {% endpartialdef %}

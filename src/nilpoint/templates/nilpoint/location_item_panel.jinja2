@@ -8,7 +8,7 @@
                 <li>
                     {% include "nilpoint/item_detail_panel.jinja2#item_icon" %}
                     {{ location_item.item.name }}
-                    {% nilpoint_action "Detail" "item_detail" item=location_item.item.id target="#nilpoint-item-detail-panel" %}
+                    {% nilpoint_action "Detail" "item_detail" item=location_item.item.id state=location_item.item_state target="#nilpoint-item-detail-panel" %}
                     {% if location_item.item.can_take %}
                         {% nilpoint_action "Take" "take_item" method="POST" location_item=location_item.id %}
                     {% endif %}

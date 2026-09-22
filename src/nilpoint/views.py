@@ -9,6 +9,7 @@ from .models import (
     Item,
     LocationItem,
     InventoryItem,
+    transfer_item_state,
 )
 from django.http import HttpResponse
 from .exceptions import NilpointMissingSlugException
@@ -486,7 +487,8 @@ class NilpointGameBasic(View):
             )
 
         # Create inventory item and delete location item
-        InventoryItem.objects.create(pc=pc, item=location_item.item)
+        inventory_item = InventoryItem.objects.create(pc=pc, item=location_item.item)
+        transfer_item_state(location_item, inventory_item)
         location_item.delete()
 
         response = HtmxTriggerResponse(
@@ -557,9 +559,10 @@ class NilpointGameBasic(View):
             )
 
         # Create location item and delete inventory item
-        LocationItem.objects.create(
+        location_item = LocationItem.objects.create(
             location=pc.current_location, pc=pc, item=inventory_item.item
         )
+        transfer_item_state(inventory_item, location_item)
         inventory_item.delete()
 
         response = HtmxTriggerResponse(
@@ -600,6 +603,8 @@ class NilpointGameBasic(View):
             )
 
         context = {"item": item}
+        state = request.GET.get("state", None)
+        context["state"] = state
         partial = self._value_from_subclass_or_default(
             "item_detail_partial",
             "nilpoint/item_detail_panel.jinja2#item_detail",

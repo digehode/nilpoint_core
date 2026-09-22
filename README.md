@@ -75,14 +75,19 @@ For example, we may need to give each new PlayerCharacter an Item. The Item will
 
 New game state models should subclass `PlayerScoped` rather than reimplementing per-character filtering.
 
+### StatefulMixin & ItemState
+
+`StatefulMixin` provides per-instance state for any model (e.g., `LocationItem`, `InventoryItem`, future machines). It adds:
+
+- `item_state` property — dict-like access to per-instance state (`get`, `put`, `pop`, `keys`, `len`, `in`, iteration)
+- `transfer_state_to(other)` — copies state to another instance
+- `transfer_item_state(from, to)` — standalone helper for take/drop
+
+State is stored in `ItemState` model (GenericForeignKey + pickled BinaryField), allowing flexible per-instance schemas without migrations.
+
+New stateful models inherit `StatefulMixin` and automatically get `item_state` property.
+
 ### Item take/drop mechanics
-
-Items support optional taking/dropping via `can_take` and `can_drop` boolean fields (default `True`). The core views provide:
-
-- `handle_take_item` — POST `location_item` ID; validates ownership, current location, and `can_take=True`; creates `InventoryItem`, deletes `LocationItem`
-- `handle_drop_item` — POST `inventory_item` ID; validates ownership, current location exists, and `can_drop=True`; creates `LocationItem` at current location, deletes `InventoryItem`
-
-Both return `HtmxTriggerResponse` with `player_location_changed` trigger to refresh the location item and inventory panels.
 
 ## Game archetypes and model overrides
 

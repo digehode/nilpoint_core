@@ -1,6 +1,9 @@
 """Core models for nilpoint"""
 
+import pickle
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.shortcuts import reverse
 from django.apps import apps
@@ -219,11 +222,15 @@ class Game(models.Model):
         return self.locations.filter(initial=True).first()
 
     def latest_release(self):
-        """Subclasses use this to return the current latest release.
+        """determines the latest release of the game based on the
+        define release_step-decorated methods of the instance
 
-        Release 0 is always blank. All subclasses should include release_update_x for each release, x.
         """
-        return 0
+        latest = 0
+        for i in self._get_migration_map():
+            if i > latest:
+                latest = i
+        return latest
 
     def _get_migration_map(self):
         """Discovers all methods decorated with @release_step."""
@@ -252,7 +259,7 @@ class Game(models.Model):
         if not callable(update_method):
             raise NotImplementedError(
                 f"No migration step defined for release {target} "
-                f"on {self.__class__.__name__}."
+                f"on {self.__class__.__name__}. Found: {update_method} in {migration_map}."
             )
 
         update_method()
@@ -515,6 +522,122 @@ class PlayerScopedManager(models.Manager):
         return self.get_queryset().filter(pc=pc)
 
 
+class ItemStateProxy:
+    """Dict-like wrapper around ItemState.data (pickled dict)."""
+
+    def __init__(self, item_state):
+        self._state = item_state
+        self._data = pickle.loads(item_state.data) if item_state.data else {}
+
+    def _save(self):
+        self._state.data = pickle.dumps(self._data)
+        self._state.save(update_fields=["data"])
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def put(self, key, value):
+        self._data[key] = value
+        self._save()
+
+    def pop(self, key, default=None):
+        val = self._data.pop(key, default)
+        self._save()
+        return val
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def keys(self):
+        return self._data.keys()
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self.put(key, value)
+
+    def __delitem__(self, key):
+        self.pop(key)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"ItemStateProxy({self._data!r})"
+
+    def dumps(self):
+        return "|" + str(self._data) + "|"
+
+
+class ItemState(models.Model):
+    """Persistent state for any game object instance (LocationItem, InventoryItem, etc.).
+
+    Uses a GenericForeignKey to attach to any model. Data is stored as a pickled
+    Python dict, allowing flexible per-object schemas without migrations.
+    """
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    data = models.BinaryField(default=b"")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["content_type", "object_id"], name="unique_itemstate_per_object"
+            ),
+        ]
+
+
+class StatefulMixin(models.Model):
+    """Mixin providing dict-like state via ItemState.
+
+    Any model inheriting from this gets an `item_state` property that returns
+    a dict-like proxy for storing arbitrary per-instance state.
+
+    Usage:
+        class MyModel(StatefulMixin, models.Model):
+            ...
+
+        obj = MyModel.objects.create(...)
+        obj.item_state.put("key", "value")
+        val = obj.item_state.get("key")
+    """
+
+    states = GenericRelation(ItemState, related_query_name="%(class)s_states")
+
+    class Meta:
+        abstract = True
+
+    @property
+    def item_state(self):
+        """Get or create ItemState, return dict-like proxy."""
+        state, _ = self.states.get_or_create(defaults={"data": pickle.dumps({})})
+        return ItemStateProxy(state)
+
+    def transfer_state_to(self, other):
+        """Copy state to another instance of the same or different model."""
+        from_state = (
+            self.item_state._state
+        )  # Get the underlying ItemState, creating if needed
+        to_state, _ = other.states.get_or_create()
+        to_state.data = from_state.data
+        to_state.save(update_fields=["data"])
+
+
+def transfer_item_state(from_instance, to_instance):
+    """Transfer state when item moves between location/inventory."""
+    from_instance.transfer_state_to(to_instance)
+
+
 class PlayerScoped(models.Model):
     """Abstract base for records that tie game content to a specific player character.
 
@@ -595,7 +718,7 @@ class Item(GameAsset):
         return f"Item({self.name}) in game {self.game.nilpoint_slug}"
 
 
-class LocationItem(PlayerScoped):
+class LocationItem(StatefulMixin, PlayerScoped):
     """For a given player character and location, represents the presence of an item."""
 
     location = models.ForeignKey(
@@ -617,7 +740,7 @@ class LocationItem(PlayerScoped):
         return f"LocationItem({self.item.name}, {self.location}, {self.pc})"
 
 
-class InventoryItem(PlayerScoped):
+class InventoryItem(StatefulMixin, PlayerScoped):
     """For a given player character represents the presence of an item in the inventory."""
 
     # Redeclared (rather than inherited from PlayerScoped) to keep the
