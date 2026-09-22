@@ -231,3 +231,79 @@ def nilpoint_form(
         "swap": swap,
         "url": url,
     }
+
+
+@register.inclusion_tag("nilpoint/tags/interact_actions.jinja2", takes_context=True)
+def nilpoint_interact_actions(
+    context,
+    instance,
+    item_type,
+    show_phase="show",
+    target=None,
+    swap="innerHTML",
+    classes="",
+):
+    """
+    Render action buttons/links for available interactions on an item instance.
+
+    Usage:
+        {% nilpoint_interact_actions location_item "location_item" %}
+        {% nilpoint_interact_actions inventory_item "inventory_item" target="#panel" %}
+
+    Args:
+        instance: LocationItem or InventoryItem instance
+        item_type: "location_item" or "inventory_item"
+        show_phase: Phase to request for show (default "show")
+        target: hx-target selector for show phase (optional)
+        swap: hx-swap for show phase (default "innerHTML")
+        classes: Additional CSS classes for action elements
+
+    Returns:
+        Context for nilpoint/tags/interact_actions.jinja2 template
+    """
+    game = context.get("game")
+    if not game:
+        return {"actions": [], "instance": instance, "item_type": item_type}
+
+    real_game = game.get_real_instance()
+    if not hasattr(real_game, "get_item_hooks"):
+        return {"actions": [], "instance": instance, "item_type": item_type}
+
+    hooks = real_game.get_item_hooks(instance.item)
+    show_hooks = hooks.get("show", {})
+    can_hooks = hooks.get("can", {})
+
+    actions = []
+    for action_name, hook_method in show_hooks.items():
+        # Check can hook if present
+        allowed = True
+        if action_name in can_hooks:
+            can_method = getattr(real_game, can_hooks[action_name], None)
+            if can_method:
+                try:
+                    allowed = bool(can_method(instance))
+                except Exception:
+                    allowed = False
+
+        if allowed:
+            actions.append(
+                {
+                    "name": action_name,
+                    "hook_method": hook_method,
+                    "item_type": item_type,
+                    "object_id": instance.id,
+                    "show_phase": show_phase,
+                    "target": target,
+                    "swap": swap,
+                }
+            )
+
+    return {
+        "actions": actions,
+        "instance": instance,
+        "item_type": item_type,
+        "target": target,
+        "swap": swap,
+        "classes": classes,
+        "game": game,
+    }

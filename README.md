@@ -87,6 +87,79 @@ State is stored in `ItemState` model (GenericForeignKey + pickled BinaryField), 
 
 New stateful models inherit `StatefulMixin` and automatically get `item_state` property.
 
+### Item Interaction Hooks
+
+Items can have interaction hooks attached, enabling game-specific actions (e.g., "squeeze", "tap", "read") without creating new models. Hooks are stored as a pickled dict on the `Item` model (template/archetype) and define three phases:
+
+| Phase | Purpose | Returns |
+|-------|---------|---------|
+| `show` | Render a partial for HTMX inclusion (e.g., a modal with action buttons) | Template path string (e.g., `"mygame/interact/squeeze.jinja2#show"`) |
+| `handle` | Execute the action when triggered | String message, `HtmxTriggerResponse`, or `None` |
+| `can` | Gate the interaction (check state, location, etc.) | `True`/`False` |
+
+**Structure on `Item.hooks`:**
+```python
+{
+    "show": {"squeeze": "show_squeeze_wotsit"},
+    "handle": {"squeeze": "handle_squeeze_wotsit"},
+    "can": {"squeeze": "can_squeeze_wotsit"},
+}
+```
+
+Each value is a method name on the game instance (`self` in release steps, or `game.get_real_instance()` in views).
+
+**Usage in a game release step:**
+```python
+@release_step(3)
+def add_wotsit_interactions(self):
+    wotsit = Item.objects.get(game=self, asset_id="WOTSIT")
+    wotsit.hooks.put("show", {"squeeze": "show_squeeze_wotsit"})
+    wotsit.hooks.put("handle", {"squeeze": "handle_squeeze_wotsit"})
+    wotsit.hooks.put("can", {"squeeze": "can_squeeze_wotsit"})
+```
+
+**Implement hook methods on your Game subclass:**
+```python
+class CypherpunkGame(Game):
+    def can_squeeze_wotsit(self, instance):  # instance is LocationItem or InventoryItem
+        return instance.item_state.get("charges", 0) > 0
+
+    def show_squeeze_wotsit(self, instance):
+        return "cypherpunk/interact/wotsit_squeeze.jinja2#show"
+
+    def handle_squeeze_wotsit(self, instance, request):
+        instance.item_state.put("charges", instance.item_state.get("charges", 0) - 1)
+        return f"Squeezed! Charges left: {instance.item_state.get('charges', 0)}"
+```
+
+**Dispatch from the client (HTMX):**
+```html
+<!-- Show phase: render action UI -->
+<button hx-post="{% nilpoint_action_url game 'interact' %}"
+        hx-vals='{"item_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "show"}'
+        hx-target="#interaction-panel">
+  Squeeze
+</button>
+
+<!-- Handle phase: execute action -->
+<button hx-post="{% nilpoint_action_url game 'interact' %}"
+        hx-vals='{"item_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "handle"}'
+        hx-target="#messages">
+  Squeeze!
+</button>
+```
+
+**Template tag for rendering available actions:**
+```jinja2
+{% load nilpoint_tags %}
+
+{# Renders buttons for all "show" hooks that pass their "can" check #}
+{% nilpoint_interact_actions location_item "location_item" target="#interaction-panel" %}
+```
+
+**Default dispatch view:**
+The `handle_interact` view is registered as action `"interact"` in `NilpointGameBasic`. It handles all three phases via POST with parameters: `item_type` (`location_item` or `inventory_item`), `object_id`, `action`, `phase`.
+
 ### Item take/drop mechanics
 
 ## Game archetypes and model overrides

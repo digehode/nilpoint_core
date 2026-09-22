@@ -198,8 +198,8 @@ class InventoryPanelViewTests(TestCase):
         response = self._render_inventory_panel()
         content = response.content.decode()
         # Check that detail links point to item_detail action with correct item IDs
-        self.assertIn(f"action=item_detail&amp;item={self.item1.id}", content)
-        self.assertIn(f"action=item_detail&amp;item={self.item2.id}", content)
+        self.assertIn(f"action=item_detail&amp;inventory_item={self.item1.id}", content)
+        self.assertIn(f"action=item_detail&amp;inventory_item={self.item2.id}", content)
         self.assertIn('hx-target="#nilpoint-item-detail-panel"', content)
 
     def test_inventory_panel_scoped_to_character(self):

@@ -6,7 +6,6 @@ from .models import (
     Player,
     PlayerCharacter,
     Exit,
-    Item,
     LocationItem,
     InventoryItem,
     transfer_item_state,
@@ -94,6 +93,7 @@ class NilpointGameBasic(View):
         "item_detail": "handle_item_detail",
         "take_item": "handle_take_item",
         "drop_item": "handle_drop_item",
+        "interact": "handle_interact",
     }
 
     @classmethod
@@ -573,38 +573,264 @@ class NilpointGameBasic(View):
         return response
 
     @require_http_methods("GET", "POST")
-    def handle_item_detail(self, request, *args, **kwargs):
-        """Return the detail view of a single item (graphic, name, description).
+    def handle_interact(self, request, *args, **kwargs):
+        """Handle item interactions (show/handle/can phases).
 
-        The item ID should be given as 'item' in the request. The item must
-        belong to the current game instance.
+        POST with:
+            - item_type: "location_item" or "inventory_item"
+            - object_id: ID of the LocationItem or InventoryItem
+            - action: The action name (e.g., "squeeze")
+            - phase: "show", "handle", or "can"
+
+        For "show" phase: Returns a partial template for HTMX inclusion.
+        For "handle" phase: Executes the action and returns response.
+        For "can" phase: Returns JSON {"allowed": true/false, "reason": "..."}.
+
+        The game instance's get_item_hooks(item) provides the hook method names.
+        """
+        item_type = request.POST.get("item_type", None)
+        object_id = request.POST.get("object_id", None)
+        action = request.POST.get("action", None)
+        phase = request.POST.get("phase", None)
+
+        if not all([item_type, object_id, action, phase]):
+            return HtmxTriggerResponse(
+                content="Missing required parameters: item_type, object_id, action, phase",
+                content_type="text/plain",
+            )
+
+        try:
+            object_id = int(object_id)
+        except (TypeError, ValueError):
+            return HtmxTriggerResponse(
+                content="Invalid object_id", content_type="text/plain"
+            )
+
+        if phase not in ("show", "handle", "can"):
+            return HtmxTriggerResponse(
+                content=f"Invalid phase '{phase}'. Must be 'show', 'handle', or 'can'",
+                content_type="text/plain",
+            )
+
+        pc = self.player_character
+        if pc is None:
+            return HtmxTriggerResponse(
+                content="No player character selected",
+                content_type="text/plain",
+            )
+
+        # Get the instance (LocationItem or InventoryItem)
+        if item_type == "location_item":
+            InstanceModel = LocationItem
+        elif item_type == "inventory_item":
+            InstanceModel = InventoryItem
+        else:
+            return HtmxTriggerResponse(
+                content=f"Invalid item_type '{item_type}'. Must be 'location_item' or 'inventory_item'",
+                content_type="text/plain",
+            )
+
+        instance = InstanceModel.objects.filter(id=object_id, pc=pc).first()
+        if instance is None:
+            return HtmxTriggerResponse(
+                content="Instance not found or not yours",
+                content_type="text/plain",
+            )
+
+        # Check the item belongs to the current game
+        if instance.item.game != self.game:
+            return HtmxTriggerResponse(
+                content="Item is not part of this game",
+                content_type="text/plain",
+            )
+
+        # Get hooks from game
+        real_game = self.game.get_real_instance()
+        hooks = real_game.get_item_hooks(instance.item)
+
+        # Check if action exists for this phase
+        phase_hooks = hooks.get(phase, {})
+        hook_method_name = phase_hooks.get(action)
+        if not hook_method_name:
+            return HtmxTriggerResponse(
+                content=f"No {phase} hook for action '{action}' on this item",
+                content_type="text/plain",
+            )
+
+        # Get the hook method
+        hook_method = getattr(real_game, hook_method_name, None)
+        if not hook_method:
+            return HtmxTriggerResponse(
+                content=f"Hook method '{hook_method_name}' not found on game",
+                content_type="text/plain",
+            )
+
+        # Execute based on phase
+        if phase == "can":
+            # Can phase: return JSON with allowed boolean
+            try:
+                allowed = hook_method(instance)
+                if not isinstance(allowed, bool):
+                    allowed = bool(allowed)
+            except Exception as e:
+                return HtmxTriggerResponse(
+                    content=f"Error in can hook: {e}",
+                    content_type="text/plain",
+                )
+            import json
+
+            response = HtmxTriggerResponse(
+                content=json.dumps({"allowed": allowed}),
+                content_type="application/json",
+            )
+            return response
+
+        elif phase == "show":
+            # Show phase: return partial template
+            try:
+                partial = hook_method(instance)
+                if not isinstance(partial, str):
+                    return HtmxTriggerResponse(
+                        content="Show hook must return a template path string",
+                        content_type="text/plain",
+                    )
+            except Exception as e:
+                return HtmxTriggerResponse(
+                    content=f"Error in show hook: {e}",
+                    content_type="text/plain",
+                )
+
+            # Render the partial with context
+            context = {
+                "instance": instance,
+                "item": instance.item,
+                "action": action,
+                "phase": "handle",  # Next phase for the action buttons
+                "state": instance.item_state._data,  # Pass state dict for template access
+                "is_inventory_item": instance.__class__.__name__ == "InventoryItem",
+            }
+            return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+        elif phase == "handle":
+            # Handle phase: execute the action, then render the show partial
+            # to display updated state
+            try:
+                hook_method(instance, request)
+            except Exception as e:
+                return HtmxTriggerResponse(
+                    content=f"Error in handle hook: {e}",
+                    content_type="text/plain",
+                )
+
+            # After handling, render the show partial for the same action
+            # to display updated state. Fall back to push_button show hook
+            # if the action doesn't have its own show hook (common pattern:
+            # multiple handle hooks share one show hook).
+            show_hooks = hooks.get("show", {})
+            show_method_name = show_hooks.get(action)
+            if not show_method_name and "push_button" in show_hooks:
+                show_method_name = show_hooks["push_button"]
+
+            if show_method_name:
+                show_method = getattr(real_game, show_method_name, None)
+                if show_method:
+                    try:
+                        partial = show_method(instance)
+                        if isinstance(partial, str):
+                            context = {
+                                "instance": instance,
+                                "item": instance.item,
+                                "action": action,
+                                "phase": "handle",
+                                "state": instance.item_state._data,
+                                "is_inventory_item": instance.__class__.__name__
+                                == "InventoryItem",
+                            }
+                            return self.nilpoint_render(
+                                request, partial, context, *args, **kwargs
+                            )
+                    except Exception as e:
+                        return HtmxTriggerResponse(
+                            content=f"Error in show hook after handle: {e}",
+                            content_type="text/plain",
+                        )
+
+            # Fallback: trigger refresh
+            response = HtmxTriggerResponse(content="OK", content_type="text/plain")
+            response.add_trigger("player_location_changed")
+            return response
+
+    @require_http_methods("GET", "POST")
+    def handle_item_detail(self, request, *args, **kwargs):
+        """Return the detail view of a single item instance (graphic, name, description).
+
+        The instance ID should be given as 'location_item' or 'inventory_item' in the request.
+        The instance must belong to the current player character and game instance.
 
         - Override item_detail_partial used to render the content.
 
         """
-        item_id = request.GET.get("item", None) or request.POST.get("item", None)
-        if item_id is None:
-            return HtmxTriggerResponse(
-                content="No item given in request parameters",
-                content_type="text/plain",
-            )
-        try:
-            item_id = int(item_id)
-        except (TypeError, ValueError):
-            return HtmxTriggerResponse(
-                content="Invalid item id", content_type="text/plain"
-            )
+        location_item_id = request.GET.get("location_item", None) or request.POST.get(
+            "location_item", None
+        )
+        inventory_item_id = request.GET.get("inventory_item", None) or request.POST.get(
+            "inventory_item", None
+        )
 
-        item = Item.objects.filter(id=item_id, game=self.game).first()
-        if item is None:
+        if not location_item_id and not inventory_item_id:
             return HtmxTriggerResponse(
-                content="Invalid item - doesn't exist in this game",
+                content="No location_item or inventory_item given in request parameters",
                 content_type="text/plain",
             )
 
-        context = {"item": item}
-        state = request.GET.get("state", None)
-        context["state"] = state
+        pc = self.player_character
+        if pc is None:
+            return HtmxTriggerResponse(
+                content="No player character selected",
+                content_type="text/plain",
+            )
+
+        instance = None
+        instance_type = None
+
+        if location_item_id:
+            try:
+                location_item_id = int(location_item_id)
+            except (TypeError, ValueError):
+                return HtmxTriggerResponse(
+                    content="Invalid location_item id", content_type="text/plain"
+                )
+            instance = LocationItem.objects.filter(id=location_item_id, pc=pc).first()
+            instance_type = "location_item"
+        else:
+            try:
+                inventory_item_id = int(inventory_item_id)
+            except (TypeError, ValueError):
+                return HtmxTriggerResponse(
+                    content="Invalid inventory_item id", content_type="text/plain"
+                )
+            instance = InventoryItem.objects.filter(id=inventory_item_id, pc=pc).first()
+            instance_type = "inventory_item"
+
+        if instance is None:
+            return HtmxTriggerResponse(
+                content="Instance not found or not yours",
+                content_type="text/plain",
+            )
+
+        # Check the item belongs to the current game
+        if instance.item.game != self.game:
+            return HtmxTriggerResponse(
+                content="Item is not part of this game",
+                content_type="text/plain",
+            )
+
+        context = {
+            "instance": instance,
+            "item": instance.item,
+            "instance_type": instance_type,
+            "item_state_data": instance.item_state._data,
+        }
         partial = self._value_from_subclass_or_default(
             "item_detail_partial",
             "nilpoint/item_detail_panel.jinja2#item_detail",

@@ -56,7 +56,34 @@ class ExitAdmin(admin.ModelAdmin):
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     model = Item
-    list_display = ["name", "asset_id", "graphic"]
+    list_display = ["name", "asset_id", "graphic", "hooks_preview"]
+    readonly_fields = ["hooks_display"]
+
+    @admin.display(description="Hooks")
+    def hooks_preview(self, obj):
+        """Show a preview of the hooks in list view."""
+        data = obj.hooks._data
+        if not data:
+            return "—"
+        preview_parts = []
+        for phase, actions in data.items():
+            if actions:
+                preview_parts.append(f"{phase}:{len(actions)}")
+        if not preview_parts:
+            return "—"
+        return ", ".join(preview_parts)
+
+    @admin.display(description="Item Hooks")
+    def hooks_display(self, obj):
+        """Show full hooks in detail view as formatted JSON."""
+        data = obj.hooks._data
+        if not data:
+            return "No hooks data"
+        try:
+            formatted = json.dumps(data, indent=2, default=str)
+            return format_html("<pre>{}</pre>", formatted)
+        except Exception:
+            return format_html("<pre>{}</pre>", str(obj.hooks._data))
 
 
 @admin.register(InventoryItem)

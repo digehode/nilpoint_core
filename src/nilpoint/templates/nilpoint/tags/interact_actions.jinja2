@@ -1,0 +1,17 @@
+{# nilpoint/tags/interact_actions.jinja2 #}
+{% if actions %}
+    <div class="nilpoint-interact-actions"
+         data-instance-type="{{ item_type }}"
+         data-instance-id="{{ instance.id }}">
+        {% for action in actions %}
+            <button type="button"
+                    class="nilpoint-interact-action {{ classes }}"
+                    hx-post="{{ game.get_dispatch_url }}?action=interact"
+                    hx-vals='{"item_type": "{{ action.item_type }}", "object_id": {{ action.object_id }}, "action": "{{ action.name }}", "phase": "{{ action.show_phase }}"}'
+                    {% if action.target %}hx-target="{{ action.target }}"{% else %}hx-target="#nilpoint-interaction-panel"{% endif %}
+                    {% if action.swap %}hx-swap="{{ action.swap }}"{% endif %}>{{ action.name|title }}</button>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="nilpoint-interact-actions nilpoint-no-actions">No actions available</div>
+{% endif %}

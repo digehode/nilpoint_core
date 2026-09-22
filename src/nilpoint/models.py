@@ -291,6 +291,32 @@ class Game(models.Model):
             f"Asset with asset_id '{asset_id}' not found for game '{self.name}'."
         )
 
+    def get_item_hooks(self, item):
+        """
+        Return interaction hooks for an item.
+
+        Subclasses should override this to define available interactions.
+        Returns a dict with keys "show", "handle", "can", each mapping
+        action names to method names on the game instance:
+
+        {
+            "show": {"squeeze": "show_squeeze_wotsit"},
+            "handle": {"squeeze": "handle_squeeze_wotsit"},
+            "can": {"squeeze": "can_squeeze_wotsit"},
+        }
+
+        The "show" hook returns a partial for HTMX inclusion.
+        The "handle" hook executes the action.
+        The "can" hook returns True/False to gate the interaction.
+
+        Args:
+            item: The Item instance (template, not LocationItem/InventoryItem)
+
+        Returns:
+            Dict with "show", "handle", "can" keys mapping to action->method dicts
+        """
+        return {"show": {}, "handle": {}, "can": {}}
+
 
 class Player(models.Model):
     """Represents a player
@@ -573,6 +599,64 @@ class ItemStateProxy:
         return "|" + str(self._data) + "|"
 
 
+class ItemHooksProxy:
+    """Dict-like wrapper around Item.hooks (pickled dict).
+
+    Stores interaction hooks as:
+        {
+            "show": {"action_name": "hook_method_name"},
+            "handle": {"action_name": "hook_method_name"},
+            "can": {"action_name": "hook_method_name"},
+        }
+
+    Each hook_method_name is a string that resolves to a method on the game instance.
+    """
+
+    def __init__(self, item):
+        self._item = item
+        self._data = pickle.loads(item.hooks_data) if item.hooks_data else {}
+
+    def _save(self):
+        self._item.hooks_data = pickle.dumps(self._data)
+        self._item.save(update_fields=["hooks_data"])
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def put(self, key, value):
+        self._data[key] = value
+        self._save()
+
+    def pop(self, key, default=None):
+        val = self._data.pop(key, default)
+        self._save()
+        return val
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def keys(self):
+        return self._data.keys()
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self.put(key, value)
+
+    def __delitem__(self, key):
+        self.pop(key)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"ItemHooksProxy({self._data!r})"
+
+
 class ItemState(models.Model):
     """Persistent state for any game object instance (LocationItem, InventoryItem, etc.).
 
@@ -707,12 +791,22 @@ class Item(GameAsset):
         default=True,
     )
 
+    hooks_data = models.BinaryField(
+        default=b"",
+        help_text="Pickled dict of interaction hooks: {'show':{}, 'handle':{}, 'can':{}}",
+    )
+
     @property
     def graphic_safe(self):
         """Get the path to the graphic, or the default if unavailable"""
         if not self.graphic:
             return self.game.default_item_graphic
         return self.graphic
+
+    @property
+    def hooks(self):
+        """Get or create hooks proxy for this item."""
+        return ItemHooksProxy(self)
 
     def __str__(self):
         return f"Item({self.name}) in game {self.game.nilpoint_slug}"

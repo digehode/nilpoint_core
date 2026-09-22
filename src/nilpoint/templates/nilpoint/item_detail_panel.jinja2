@@ -22,6 +22,10 @@
         {% with current_item=location_item.item %}
             {% partial item_icon_x %}
         {% endwith %}
+    {% elif instance.item %}
+        {% with current_item=instance.item %}
+            {% partial item_icon_x %}
+        {% endwith %}
     {% endif %}
 {% endpartialdef %}
 {% partialdef item_detail %}
@@ -37,11 +41,19 @@
         <div class="nilpoint-item-detail-text">
             <h1>{{ item.name }}</h1>
             <p>{{ item.description }}</p>
+            {# Available interaction actions #}
+            {% if instance %}
+                <div class="nilpoint-item-actions">
+                    {% nilpoint_interact_actions instance instance_type target="#nilpoint-interaction-panel" %}
+                </div>
+            {% endif %}
             {% if debug %}
                 <h3>DEBUG</h3>
                 {% if state %}
                     <p>has state: {{ state }}</p>
                     <p>{{ state.keys }}</p>
+                {% elif instance %}
+                    <p>state: {{ instance.item_state_data }}</p>
                 {% endif %}
             {% endif %}
         </div>
