@@ -9,6 +9,7 @@ from django.shortcuts import reverse
 from django.apps import apps
 
 from model_utils.managers import InheritanceManager
+from .interactions import InteractiveMixin
 from .nilpoint_settings import nilpoint_settings
 
 # TODO: move to using InheritanceManager in game instead of custom downcast functions?
@@ -71,6 +72,17 @@ class GameAsset(models.Model):
     asset_id+game unique constraint. Instead use
     `constraints = GameAsset.Meta.constraints + [...]`
 
+    IMPORTANT NOTE ON INHERITANCE ORDER
+
+    A GameAsset that also mixes in behaviour - `Item` mixes in
+    `InteractiveMixin` - must list `GameAsset` first:
+
+        class Item(GameAsset, InteractiveMixin): ...
+
+    Django resolves `Meta` through the MRO, so a mixin declared first would
+    supply its own empty `Meta` and silently drop the asset_id+game unique
+    constraint.  `makemigrations --check` catches this, but the resulting
+    migration will happily drop the constraint from the database.
     """
 
     asset_id = models.CharField(
@@ -294,37 +306,6 @@ class Game(models.Model):
         raise models.ObjectDoesNotExist(
             f"Asset with asset_id '{asset_id}' not found for game '{self.name}'."
         )
-
-    def get_item_hooks(self, item):
-        """
-        Return interaction hooks for an item.
-
-        Subclasses should override this to define available interactions.
-        Returns a dict with keys "show", "handle", "can", each mapping
-        action names to method names on the game instance:
-
-        {
-            "show": {"squeeze": "show_squeeze_wotsit"},
-            "handle": {"squeeze": "handle_squeeze_wotsit"},
-            "can": {"squeeze": "can_squeeze_wotsit"},
-        }
-
-        The "show" hook returns a partial for HTMX inclusion.
-        The "handle" hook executes the action.
-        The "can" hook returns True/False to gate the interaction.
-
-        Args:
-            item: The Item instance (template, not LocationItem/InventoryItem)
-
-        Returns:
-            Dict with "show", "handle", "can" keys mapping to action->method dicts
-        """
-        # Default: read hooks from the Item's persisted hooks_data
-        return {
-            "show": item.hooks.get("show", {}),
-            "handle": item.hooks.get("handle", {}),
-            "can": item.hooks.get("can", {}),
-        }
 
 
 class Player(models.Model):
@@ -608,103 +589,6 @@ class ItemStateProxy:
         return "|" + str(self._data) + "|"
 
 
-def _normalize_show_hooks(show_dict):
-    """Normalize show hooks to dict format with method and label.
-
-    Accepts:
-        {"action": "method_name"}                    -> {"action": {"method": "method_name", "label": "Action Name"}}
-        {"action": {"method": "...", "label": "..."}} -> unchanged (passed through)
-    """
-    if not isinstance(show_dict, dict):
-        return {}
-    normalized = {}
-    for action, value in show_dict.items():
-        if isinstance(value, str):
-            # Simple string: method name only, derive label from action
-            label = action.replace("_", " ").title()
-            normalized[action] = {"method": value, "label": label}
-        elif isinstance(value, dict):
-            # Already a dict with method/label
-            normalized[action] = value
-        else:
-            # Fallback: treat as method name string
-            normalized[action] = {
-                "method": str(value),
-                "label": action.replace("_", " ").title(),
-            }
-    return normalized
-
-
-class ItemHooksProxy:
-    """Dict-like wrapper around Item.hooks (pickled dict).
-
-    Stores interaction hooks as:
-        {
-            "show": {
-                "action_name": {"method": "hook_method_name", "label": "User Label"},
-            },
-            "handle": {"action_name": "hook_method_name"},
-            "can": {"action_name": "hook_method_name"},
-        }
-
-    Show hooks support both simple string (method name) and dict with
-    "method" and "label" keys. On read, strings are normalized to dicts
-    with auto-derived labels.
-    """
-
-    def __init__(self, item):
-        self._item = item
-        self._data = pickle.loads(item.hooks_data) if item.hooks_data else {}
-
-    def _save(self):
-        self._item.hooks_data = pickle.dumps(self._data)
-        self._item.save(update_fields=["hooks_data"])
-
-    def get(self, key, default=None):
-        value = self._data.get(key, default)
-        if key == "show" and isinstance(value, dict):
-            return _normalize_show_hooks(value)
-        return value
-
-    def put(self, key, value):
-        self._data[key] = value
-        self._save()
-
-    def pop(self, key, default=None):
-        val = self._data.pop(key, default)
-        self._save()
-        if key == "show" and isinstance(val, dict):
-            return _normalize_show_hooks(val)
-        return val
-
-    def __contains__(self, key):
-        return key in self._data
-
-    def keys(self):
-        return self._data.keys()
-
-    def __getitem__(self, key):
-        value = self._data[key]
-        if key == "show" and isinstance(value, dict):
-            return _normalize_show_hooks(value)
-        return value
-
-    def __setitem__(self, key, value):
-        self.put(key, value)
-
-    def __delitem__(self, key):
-        self.pop(key)
-
-    def __iter__(self):
-        return iter(self._data)
-
-    def __len__(self):
-        return len(self._data)
-
-    def __repr__(self):
-        return f"ItemHooksProxy({self._data!r})"
-
-
 class ItemState(models.Model):
     """Persistent state for any game object instance (LocationItem, InventoryItem, etc.).
 
@@ -782,6 +666,13 @@ class PlayerScoped(models.Model):
     related_name) and get `objects.for_character(pc)` for free, so game apps
     don't have to reimplement per-character filtering for new state models.
 
+    PlayerScoped also supplies the small vocabulary the interaction system
+    needs, so that game code can ask `instance.is_in_inventory` rather than
+    comparing class names.  Subclasses that represent something the player is
+    carrying set `is_carried = True`; anything else defaults to False.  Each
+    subclass also names itself with `wire_name`, which is how the interact
+    view recognises it - see `interactions.holder_type`.
+
     Developer Usage:
 
         class FoundNote(PlayerScoped):
@@ -791,6 +682,14 @@ class PlayerScoped(models.Model):
         notes_for_pc = FoundNote.objects.for_character(pc)
     """
 
+    # Is this record the player carrying the thing, rather than it lying in
+    # the world?  Overridden by InventoryItem.
+    is_carried = False
+
+    # The name this record is known by on the wire, in interact requests. It is
+    # part of the protocol, so treat it as permanent once released.
+    wire_name = "player_scoped"
+
     pc = models.ForeignKey(PlayerCharacter, null=False, on_delete=models.CASCADE)
 
     objects = PlayerScopedManager()
@@ -798,8 +697,17 @@ class PlayerScoped(models.Model):
     class Meta:
         abstract = True
 
+    @property
+    def is_in_inventory(self):
+        """True if this record represents the player carrying the item.
 
-class Item(GameAsset):
+        Preferred over comparing class names, because it stays correct when a
+        game subclasses `InventoryItem` via NILPOINT_SETTINGS archetypes.
+        """
+        return self.is_carried
+
+
+class Item(GameAsset, InteractiveMixin):
     """An item that exists in the world or an inventory.
 
     This is the ideal of the item. It can be linked to a location or
@@ -809,6 +717,22 @@ class Item(GameAsset):
     Instances of this model are shared by all players and no player or
     location data is associated here.
 
+    An Item is interactive if its `interaction` field names an
+    `InteractiveItem` subclass.  That class decides what a player can do with
+    the item, so several items - in this game or another - can share the same
+    behaviour by naming the same class.
+
+    Developer Usage:
+
+        @release_step(7)
+        def add_mystery_device(self):
+            Item.objects.create(
+                game=self,
+                asset_id="MYSTERY_DEVICE",
+                name="Mystery Device",
+                description="A mysterious device with a button labelled 'push me'",
+                interaction=MysteryDevice.dotted_path(),
+            )
     """
 
     name = models.CharField(
@@ -839,11 +763,6 @@ class Item(GameAsset):
         default=True,
     )
 
-    hooks_data = models.BinaryField(
-        default=b"",
-        help_text="Pickled dict of interaction hooks: {'show':{}, 'handle':{}, 'can':{}}",
-    )
-
     @property
     def graphic_safe(self):
         """Get the path to the graphic, or the default if unavailable"""
@@ -851,17 +770,18 @@ class Item(GameAsset):
             return self.game.default_item_graphic
         return self.graphic
 
-    @property
-    def hooks(self):
-        """Get or create hooks proxy for this item."""
-        return ItemHooksProxy(self)
-
     def __str__(self):
         return f"Item({self.name}) in game {self.game.nilpoint_slug}"
 
 
 class LocationItem(StatefulMixin, PlayerScoped):
-    """For a given player character and location, represents the presence of an item."""
+    """For a given player character and location, represents the presence of an item.
+
+    One of these exists per player per location: it is the item lying in the
+    world, as opposed to the `Item` ideal that all players share.
+    """
+
+    wire_name = "location_item"
 
     location = models.ForeignKey(
         Location, null=False, on_delete=models.CASCADE, related_name="items"
@@ -883,7 +803,14 @@ class LocationItem(StatefulMixin, PlayerScoped):
 
 
 class InventoryItem(StatefulMixin, PlayerScoped):
-    """For a given player character represents the presence of an item in the inventory."""
+    """For a given player character represents the presence of an item in the inventory.
+
+    One of these exists per player per item they are carrying, so it is also
+    where per-player interaction state lives - see `StatefulMixin`.
+    """
+
+    is_carried = True
+    wire_name = "inventory_item"
 
     # Redeclared (rather than inherited from PlayerScoped) to keep the
     # existing related_name; the field definition is otherwise identical.

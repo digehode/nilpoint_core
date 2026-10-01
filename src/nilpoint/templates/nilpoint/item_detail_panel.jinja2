@@ -43,9 +43,7 @@
             <p>{{ item.description }}</p>
             {# Available interaction actions #}
             {% if instance %}
-                <div class="nilpoint-item-actions">
-                    {% nilpoint_interact_actions instance instance_type target="#nilpoint-interaction-panel" %}
-                </div>
+                <div class="nilpoint-item-actions">{% nilpoint_interact_actions instance target="#nilpoint-interaction-panel" %}</div>
             {% endif %}
             {% if debug %}
                 <h3>DEBUG</h3>
@@ -53,7 +51,7 @@
                     <p>has state: {{ state }}</p>
                     <p>{{ state.keys }}</p>
                 {% elif instance %}
-                    <p>state: {{ instance.item_state_data }}</p>
+                    <p>state: {{ item_state_data }}</p>
                 {% endif %}
             {% endif %}
         </div>

@@ -8,19 +8,62 @@ from .models import (
     Exit,
     LocationItem,
     InventoryItem,
+    PlayerScoped,
     transfer_item_state,
 )
 from django.http import HttpResponse
-from .exceptions import NilpointMissingSlugException
+from .exceptions import NilpointMissingSlugException, UnresolvableInteraction
 from .forms import NewPlayerCharacterForm
 from functools import wraps
 import json
 from .models import get_model
+from .interactions import (
+    InteractiveMixin,
+    get_interaction,
+    get_interaction_asset,
+    holder_type,
+)
 from django.template.loader import render_to_string
 from .decorators import require_http_methods
 
 
 # TODO: Allow Exit objects to be subclassed - use same settings as other subclassed things
+
+
+def _get_interaction_target_models():
+    """Return every concrete model a player can be asked to interact with.
+
+    Two kinds qualify: player-scoped records that point at an interactive
+    asset (LocationItem, InventoryItem), and shared assets that are
+    themselves interactive (an Exit, once one has a behaviour).  Games that add
+    their own are picked up here without changing core.
+    """
+    from django.apps import apps
+
+    models = []
+    for model in apps.get_models():
+        if model._meta.abstract:
+            continue
+        if issubclass(model, PlayerScoped) or issubclass(model, InteractiveMixin):
+            models.append(model)
+    return models
+
+
+def _get_interaction_target_names():
+    """Return the wire names the `interact` action understands.
+
+    Computed on demand rather than at import, because it depends on which
+    models the installed apps define.
+    """
+    return {holder_type(model) for model in _get_interaction_target_models()}
+
+
+def _get_interaction_target_model(target_type):
+    """Return the model a `target_type` names, or None if nothing matches."""
+    for model in _get_interaction_target_models():
+        if holder_type(model) == target_type:
+            return model
+    return None
 
 
 class HtmxTriggerResponse(HttpResponse):
@@ -574,36 +617,49 @@ class NilpointGameBasic(View):
 
     @require_http_methods("GET", "POST")
     def handle_interact(self, request, *args, **kwargs):
-        """Handle item interactions (show/handle/can phases).
+        """Run a phase of a player interaction with an interactive asset.
+
+        The asset's `interaction` field names an `InteractiveItem` subclass,
+        which is instantiated and asked for behaviour.  Nothing here knows the
+        name of any particular action.
 
         POST with:
-            - item_type: "location_item" or "inventory_item"
-            - object_id: ID of the LocationItem or InventoryItem
-            - action: The action name (e.g., "squeeze")
-            - phase: "show", "handle", or "can"
+            - target_type: what the player interacted with.  "location_item"
+              or "inventory_item" for items, or any interactive asset type,
+              e.g. "exit".
+            - object_id: the primary key of that record.
+            - action: the action name, as declared by the interaction class.
+            - phase: "show", "handle", or "can".
 
-        For "show" phase: Returns a partial template for HTMX inclusion.
-        For "handle" phase: Executes the action and returns response.
-        For "can" phase: Returns JSON {"allowed": true/false, "reason": "..."}.
+        Phases:
+            - "show": returns the action's partial, rendered with the current
+              state.  This is what a button opens.
+            - "handle": gates on "can", performs the action, then re-renders
+              the partial so the player sees the new state.
+            - "can": returns JSON {"allowed": bool, "reason": str}.  The
+              template tags apply this rule themselves, so this phase exists
+              for clients that need to ask explicitly.
 
-        get_item_hooks(item) provides the hook method names.
+        The `can` gate is enforced here, not just in the UI: a "handle" request
+        for an unavailable action is refused before the action runs.
+
+        Returns:
+            `HtmxTriggerResponse` in every case.  For "handle", the action may
+            influence the response: returning a string sends that text back,
+            returning an `HttpResponse` is used as-is, and returning None has
+            the partial re-rendered.
         """
-        item_type = request.POST.get("item_type", None)
+        target_type = request.POST.get("target_type", None)
         object_id = request.POST.get("object_id", None)
-        action = request.POST.get("action", None)
+        action_name = request.POST.get("action", None)
         phase = request.POST.get("phase", None)
 
-        if not all([item_type, object_id, action, phase]):
+        if not all([target_type, object_id, action_name, phase]):
             return HtmxTriggerResponse(
-                content="Missing required parameters: item_type, object_id, action, phase",
+                content=(
+                    "Missing required parameters: target_type, object_id, action, phase"
+                ),
                 content_type="text/plain",
-            )
-
-        try:
-            object_id = int(object_id)
-        except (TypeError, ValueError):
-            return HtmxTriggerResponse(
-                content="Invalid object_id", content_type="text/plain"
             )
 
         if phase not in ("show", "handle", "can"):
@@ -619,170 +675,203 @@ class NilpointGameBasic(View):
                 content_type="text/plain",
             )
 
-        # Get the instance (LocationItem or InventoryItem)
-        if item_type == "location_item":
-            InstanceModel = LocationItem
-        elif item_type == "inventory_item":
-            InstanceModel = InventoryItem
-        else:
+        try:
+            object_id = int(object_id)
+        except (TypeError, ValueError):
             return HtmxTriggerResponse(
-                content=f"Invalid item_type '{item_type}'. Must be 'location_item' or 'inventory_item'",
+                content="Invalid object_id", content_type="text/plain"
+            )
+
+        resolved = self._get_interaction_target(target_type, object_id)
+        if isinstance(resolved, HttpResponse):
+            return resolved
+        instance, asset = resolved
+
+        try:
+            interaction = get_interaction(instance or asset, pc=pc)
+        except UnresolvableInteraction as e:
+            return HtmxTriggerResponse(
+                content=f"Interaction unavailable: {e}", content_type="text/plain"
+            )
+
+        if interaction is None:
+            return HtmxTriggerResponse(
+                content=f"'{asset}' has no interactions",
                 content_type="text/plain",
             )
 
-        instance = InstanceModel.objects.filter(id=object_id, pc=pc).first()
+        action = interaction.get_action(action_name)
+        if action is None:
+            return HtmxTriggerResponse(
+                content=(
+                    f"'{type(interaction).__name__}' has no action '{action_name}'"
+                ),
+                content_type="text/plain",
+            )
+
+        if phase == "can":
+            try:
+                allowed = bool(interaction.can(instance, action))
+            except Exception as e:
+                return HtmxTriggerResponse(
+                    content=f"Error in can: {e}", content_type="text/plain"
+                )
+            return HtmxTriggerResponse(
+                content=json.dumps({"allowed": allowed}),
+                content_type="application/json",
+            )
+
+        if phase == "show":
+            try:
+                partial = interaction.show(instance, action)
+            except Exception as e:
+                return HtmxTriggerResponse(
+                    content=f"Error in show: {e}", content_type="text/plain"
+                )
+            if not partial:
+                return HtmxTriggerResponse(
+                    content=(f"Action '{action.name}' has nothing to show"),
+                    content_type="text/plain",
+                )
+            context = self._get_interaction_context(
+                instance, asset, interaction, action
+            )
+            return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+        # phase == "handle".  The gate is enforced here, not only in the UI, so
+        # that a request that bypasses the buttons still cannot do the thing.
+        try:
+            allowed = bool(interaction.can(instance, action))
+        except Exception as e:
+            return HtmxTriggerResponse(
+                content=f"Error in can: {e}", content_type="text/plain"
+            )
+        if not allowed:
+            response = HtmxTriggerResponse(
+                content=f"Can't {action.display_label.lower()} that right now",
+                content_type="text/plain",
+            )
+            response.add_trigger("player_location_changed")
+            return response
+
+        try:
+            result = interaction.handle(instance, action, request)
+        except Exception as e:
+            return HtmxTriggerResponse(
+                content=f"Error in handle: {e}", content_type="text/plain"
+            )
+
+        # The action chose the response.  A returned response is used as-is, a
+        # returned string is sent to the player, and None re-renders the
+        # partial so the new state is visible.
+        if isinstance(result, HttpResponse):
+            return result
+        if isinstance(result, str):
+            response = HtmxTriggerResponse(content=result, content_type="text/plain")
+            response.add_trigger("player_location_changed")
+            return response
+
+        try:
+            partial = interaction.show(instance, action)
+        except Exception as e:
+            return HtmxTriggerResponse(
+                content=f"Error in show after handle: {e}", content_type="text/plain"
+            )
+
+        if partial:
+            context = self._get_interaction_context(
+                instance, asset, interaction, action
+            )
+            return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+        # The action changed something but has no partial to show, so ask the
+        # page to refresh the panels that might display it.
+        response = HtmxTriggerResponse(content="OK", content_type="text/plain")
+        response.add_trigger("player_location_changed")
+        return response
+
+    def _get_interaction_target(self, target_type, object_id):
+        """Find the record a player is interacting with.
+
+        Args:
+            target_type: the wire name of the record type, as produced by
+                `interactions.holder_type`, e.g. "location_item" or "exit".
+            object_id: the primary key of that record.
+
+        Returns:
+            A `(instance, asset)` tuple, where `instance` is the player-scoped
+            record the interaction is happening on (None for assets that have
+            no per-player record, such as an Exit) and `asset` is the
+            interactive asset itself.  Or an `HttpResponse` describing the
+            problem, for the caller to return as-is.
+        """
+        target_model = _get_interaction_target_model(target_type)
+        if target_model is None:
+            return HtmxTriggerResponse(
+                content=(
+                    f"Invalid target_type '{target_type}'. Must be one of: "
+                    f"{', '.join(sorted(_get_interaction_target_names()))}"
+                ),
+                content_type="text/plain",
+            )
+
+        # Player-scoped records (items) are private to one character, so they
+        # are filtered by pc as well as id. Shared assets (an Exit) are only
+        # filtered by id, since they are the same row for everyone.
+        if issubclass(target_model, PlayerScoped):
+            queryset = target_model.objects.filter(
+                id=object_id, pc=self.player_character
+            )
+        else:
+            queryset = target_model.objects.filter(id=object_id)
+
+        instance = queryset.first()
         if instance is None:
             return HtmxTriggerResponse(
-                content="Instance not found or not yours",
+                content="Not found or not yours",
                 content_type="text/plain",
             )
 
-        # Check the item belongs to the current game
-        if instance.item.game != self.game:
+        asset = get_interaction_asset(instance)
+        if asset is None or asset.game != self.game:
             return HtmxTriggerResponse(
                 content="Item is not part of this game",
                 content_type="text/plain",
             )
 
-        # Get hooks from game
-        real_game = self.game.get_real_instance()
-        hooks = real_game.get_item_hooks(instance.item)
+        # A shared asset is its own instance as far as the interaction is
+        # concerned; there is no per-player record to carry state.
+        if not issubclass(target_model, PlayerScoped):
+            instance = None
 
-        # Check if action exists for this phase
-        phase_hooks = hooks.get(phase, {})
-        hook_entry = phase_hooks.get(action)
-        if not hook_entry:
-            return HtmxTriggerResponse(
-                content=f"No {phase} hook for action '{action}' on this item",
-                content_type="text/plain",
-            )
+        return instance, asset
 
-        # Extract method name: show hooks are dicts with "method", others are strings
-        if phase == "show" and isinstance(hook_entry, dict):
-            hook_method_name = hook_entry.get("method")
-        elif isinstance(hook_entry, str):
-            hook_method_name = hook_entry
-        else:
-            # Backward compat for any other dict format
-            hook_method_name = (
-                hook_entry.get("method")
-                if isinstance(hook_entry, dict)
-                else str(hook_entry)
-            )
+    def _get_interaction_context(self, instance, asset, interaction, action):
+        """Build the template context for an interaction partial.
 
-        # Get the hook method
-        hook_method = getattr(real_game, hook_method_name, None)
-        if not hook_method:
-            return HtmxTriggerResponse(
-                content=f"Hook method '{hook_method_name}' not found on game",
-                content_type="text/plain",
-            )
-
-        # Execute based on phase
-        if phase == "can":
-            # Can phase: return JSON with allowed boolean
-            try:
-                allowed = hook_method(instance)
-                if not isinstance(allowed, bool):
-                    allowed = bool(allowed)
-            except Exception as e:
-                return HtmxTriggerResponse(
-                    content=f"Error in can hook: {e}",
-                    content_type="text/plain",
-                )
-            import json
-
-            response = HtmxTriggerResponse(
-                content=json.dumps({"allowed": allowed}),
-                content_type="application/json",
-            )
-            return response
-
-        elif phase == "show":
-            # Show phase: return partial template
-            try:
-                partial = hook_method(instance)
-                if not isinstance(partial, str):
-                    return HtmxTriggerResponse(
-                        content="Show hook must return a template path string",
-                        content_type="text/plain",
-                    )
-            except Exception as e:
-                return HtmxTriggerResponse(
-                    content=f"Error in show hook: {e}",
-                    content_type="text/plain",
-                )
-
-            # Render the partial with context
-            context = {
-                "instance": instance,
-                "item": instance.item,
-                "action": action,
-                "phase": "handle",  # Next phase for the action buttons
-                "state": instance.item_state._data,  # Pass state dict for template access
-                "is_inventory_item": instance.__class__.__name__ == "InventoryItem",
-            }
-            return self.nilpoint_render(request, partial, context, *args, **kwargs)
-
-        elif phase == "handle":
-            # Handle phase: execute the action, then render the show partial
-            # to display updated state. Fall back to push_button show hook
-            # if the action doesn't have its own show hook (common pattern:
-            # multiple handle hooks share one show hook).
-
-            # First, execute the handle hook
-            try:
-                hook_method(instance, request)
-            except Exception as e:
-                return HtmxTriggerResponse(
-                    content=f"Error in handle hook: {e}",
-                    content_type="text/plain",
-                )
-
-            # After handling, render the show partial for the same action
-            # to display updated state. Fall back to push_button show hook
-            # if the action doesn't have its own show hook (common pattern:
-            # multiple handle hooks share one show hook).
-            show_hooks = hooks.get("show", {})
-            show_entry = show_hooks.get(action)
-            if not show_entry and "push_button" in show_hooks:
-                show_entry = show_hooks["push_button"]
-
-            show_method_name = None
-            if isinstance(show_entry, dict):
-                show_method_name = show_entry.get("method")
-            elif isinstance(show_entry, str):
-                # Backward compat: stored as simple string
-                show_method_name = show_entry
-
-            if show_method_name:
-                show_method = getattr(real_game, show_method_name, None)
-                if show_method:
-                    try:
-                        partial = show_method(instance)
-                        if isinstance(partial, str):
-                            context = {
-                                "instance": instance,
-                                "item": instance.item,
-                                "action": action,
-                                "phase": "handle",
-                                "state": instance.item_state._data,
-                                "is_inventory_item": instance.__class__.__name__
-                                == "InventoryItem",
-                            }
-                            return self.nilpoint_render(
-                                request, partial, context, *args, **kwargs
-                            )
-                    except Exception as e:
-                        return HtmxTriggerResponse(
-                            content=f"Error in show hook after handle: {e}",
-                            content_type="text/plain",
-                        )
-
-            # Fallback: trigger refresh
-            response = HtmxTriggerResponse(content="OK", content_type="text/plain")
-            response.add_trigger("player_location_changed")
-            return response
+        The stable keys - `instance`, `item`, `asset`, `action`, `phase`,
+        `state`, `pc` and `interaction` - are always present.  Games add their
+        own by overriding `InteractiveItem.get_context()`.
+        """
+        context = {
+            "instance": instance,
+            "item": asset,
+            "asset": asset,
+            "action": action,
+            # The partial is rendered to show the action's result, so the
+            # buttons it offers are for the next phase.
+            "phase": "handle",
+            "state": instance.item_state if instance is not None else {},
+            "pc": self.player_character,
+            "interaction": interaction,
+        }
+        try:
+            extra = interaction.get_context(instance, action)
+        except Exception:
+            extra = None
+        if extra:
+            context.update(extra)
+        return context
 
     @require_http_methods("GET", "POST")
     def handle_item_detail(self, request, *args, **kwargs):

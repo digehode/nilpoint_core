@@ -1,7 +1,13 @@
 {% load static i18n %}
 {% partialdef test %}
     <div class="test-interact-show">
-        <p>Squeeze the wotsit?</p>
+        <p>Interaction panel for action '{{ action.name }}'.</p>
         <span data-test="show-partial">SHOW PARTIAL RENDERED</span>
+        {# The stable context keys an interaction partial can rely on. #}
+        <span data-test="instance">{{ instance.id }}</span>
+        <span data-test="item">{{ item.name }}</span>
+        <span data-test="phase">{{ phase }}</span>
+        <span data-test="pc">{{ pc.handle }}</span>
+        <span data-test="interaction">{{ interaction.label }}</span>
     </div>
 {% endpartialdef %}

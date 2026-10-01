@@ -6,12 +6,15 @@ Provides tags to simplify common HTMX patterns in templates:
 - nilpoint_panel: Render an HTMX panel div that loads via GET
 - nilpoint_action: Render an action link/button with correct HTTP method
 - nilpoint_form: Render a form that GETs on load, POSTs on submit
+- nilpoint_interact_actions: Render a button per available interaction action
 """
 
 from django import template
 from django.urls import NoReverseMatch
 
 from nilpoint.decorators import _get_handler_methods
+from nilpoint.exceptions import UnresolvableInteraction
+from nilpoint.interactions import get_interaction, holder_type
 
 register = template.Library()
 
@@ -237,84 +240,74 @@ def nilpoint_form(
 def nilpoint_interact_actions(
     context,
     instance,
-    item_type,
     show_phase="show",
     target=None,
     swap="innerHTML",
     classes="",
 ):
     """
-    Render action buttons/links for available interactions on an item instance.
+    Render a button for every interaction action currently available.
+
+    The interaction is found by asking `instance` for its interaction class,
+    so this works for anything interactive - a LocationItem, an
+    InventoryItem, an Exit - without the template needing to know which.
 
     Usage:
-        {% nilpoint_interact_actions location_item "location_item" %}
-        {% nilpoint_interact_actions inventory_item "inventory_item" target="#panel" %}
+        {% nilpoint_interact_actions location_item %}
+        {% nilpoint_interact_actions inventory_item target="#panel" %}
 
     Args:
-        instance: LocationItem or InventoryItem instance
-        item_type: "location_item" or "inventory_item"
-        show_phase: Phase to request for show (default "show")
-        target: hx-target selector for show phase (optional)
-        swap: hx-swap for show phase (default "innerHTML")
-        classes: Additional CSS classes for action elements
+        instance: The record the player is interacting with (LocationItem,
+            InventoryItem, or an interactive asset)
+        show_phase: Phase to request when a button is clicked (default
+            "show", which opens the action's partial)
+        target: hx-target selector for the partial (optional)
+        swap: hx-swap for the partial (default "innerHTML")
+        classes: Additional CSS classes for the buttons
 
     Returns:
-        Context for nilpoint/tags/interact_actions.jinja2 template
+        Context for nilpoint/tags/interact_actions.jinja2.  Actions the `can`
+        rule refuses are omitted.
     """
+    target_type = holder_type(instance)
+    empty = {
+        "actions": [],
+        "instance": instance,
+        "target_type": target_type,
+        "game": None,
+    }
     game = context.get("game")
-    if not game:
-        return {"actions": [], "instance": instance, "item_type": item_type}
+    if game is None:
+        return empty
 
-    real_game = game.get_real_instance()
-    if not hasattr(real_game, "get_item_hooks"):
-        return {"actions": [], "instance": instance, "item_type": item_type}
+    try:
+        interaction = get_interaction(instance)
+    except UnresolvableInteraction:
+        # A misconfigured interaction shouldn't take the page down; the
+        # nilpoint_check command reports the underlying problem.
+        return empty
 
-    hooks = real_game.get_item_hooks(instance.item)
-    show_hooks = hooks.get("show", {})
-    can_hooks = hooks.get("can", {})
+    if interaction is None:
+        return empty
 
-    actions = []
-    for action_name, show_entry in show_hooks.items():
-        # Extract method name and label from show entry
-        if isinstance(show_entry, dict):
-            hook_method = show_entry.get("method")
-            label = show_entry.get("label", action_name.replace("_", " ").title())
-        elif isinstance(show_entry, str):
-            # Backward compat: simple string
-            hook_method = show_entry
-            label = action_name.replace("_", " ").title()
-        else:
-            hook_method = str(show_entry)
-            label = action_name.replace("_", " ").title()
-
-        # Check can hook if present
-        allowed = True
-        if action_name in can_hooks:
-            can_method = getattr(real_game, can_hooks[action_name], None)
-            if can_method:
-                try:
-                    allowed = bool(can_method(instance))
-                except Exception:
-                    allowed = False
-
-        if allowed and hook_method:
-            actions.append(
-                {
-                    "name": action_name,
-                    "label": label,
-                    "hook_method": hook_method,
-                    "item_type": item_type,
-                    "object_id": instance.id,
-                    "show_phase": show_phase,
-                    "target": target,
-                    "swap": swap,
-                }
-            )
+    actions = [
+        {
+            "name": action.name,
+            "label": action.display_label,
+            "target_type": target_type,
+            "object_id": instance.pk,
+            "show_phase": show_phase,
+            "target": target,
+            "swap": swap,
+        }
+        for action in interaction.available_actions(instance)
+    ]
 
     return {
         "actions": actions,
         "instance": instance,
-        "item_type": item_type,
+        "interaction": interaction,
+        "target_type": target_type,
         "target": target,
         "swap": swap,
         "classes": classes,

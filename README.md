@@ -87,78 +87,117 @@ State is stored in `ItemState` model (GenericForeignKey + pickled BinaryField), 
 
 New stateful models inherit `StatefulMixin` and automatically get `item_state` property.
 
-### Item Interaction Hooks
+### Item interactions
 
-Items can have interaction hooks attached, enabling game-specific actions (e.g., "squeeze", "tap", "read") without creating new models. Hooks are stored as a pickled dict on the `Item` model (template/archetype) and define three phases:
+An item can be made interactive by naming an `InteractiveItem` subclass in its
+`interaction` field. That class owns everything the player can do with the
+item: the action list, which actions are currently available, the partial
+rendered for each one, and what happens when an action is chosen. Nothing
+about a specific item's behaviour lives in core or in the `Game` subclass any
+more.
+
+Interaction classes are plain Python classes (not Django models); several
+items may share one class, and per-player state belongs in `item_state` (see
+`StatefulMixin`), just like the old hooks.
+
+**The three phases:**
 
 | Phase | Purpose | Returns |
 |-------|---------|---------|
-| `show` | Render a partial for HTMX inclusion (e.g., a modal with action buttons) | Template path string (e.g., `"mygame/interact/squeeze.jinja2#show"`) |
+| `can` | Gate the action (check state, location, etc.) | `True`/`False` |
+| `show` | Render a partial for HTMX inclusion (e.g., a panel with action buttons) | Template path string (e.g., `"mygame/interact/squeeze.jinja2#show"`) |
 | `handle` | Execute the action when triggered | String message, `HtmxTriggerResponse`, or `None` |
-| `can` | Gate the interaction (check state, location, etc.) | `True`/`False` |
 
-**Structure on `Item.hooks`:**
+The `can` gate is always enforced by the view before `handle` runs, not just by
+the buttons in the UI. A `handle` that returns a string sends that text to the
+player, one that returns an `HttpResponse` is used as-is (its triggers survive),
+and one that returns `None` re-renders the partial so the new state shows.
+
+**Define an interaction class:**
+
 ```python
-{
-    "show": {"squeeze": "show_squeeze_wotsit"},
-    "handle": {"squeeze": "handle_squeeze_wotsit"},
-    "can": {"squeeze": "can_squeeze_wotsit"},
-}
-```
+# mygame/interactions.py
+from nilpoint.interactions import Action, InteractiveItem
 
-Each value is a method name on the game instance (`self` in release steps, or `game.get_real_instance()` in views).
+class Wotsit(InteractiveItem):
+    show_partial = "mygame/interact/wotsit.jinja2#show"
 
-**Usage in a game release step:**
-```python
-@release_step(3)
-def add_wotsit_interactions(self):
-    wotsit = Item.objects.get(game=self, asset_id="WOTSIT")
-    wotsit.hooks.put("show", {"squeeze": "show_squeeze_wotsit"})
-    wotsit.hooks.put("handle", {"squeeze": "handle_squeeze_wotsit"})
-    wotsit.hooks.put("can", {"squeeze": "can_squeeze_wotsit"})
-```
+    actions = [Action("squeeze", label="Squeeze")]
 
-**Implement hook methods on your Game subclass:**
-```python
-class CypherpunkGame(Game):
-    def can_squeeze_wotsit(self, instance):  # instance is LocationItem or InventoryItem
+    def can(self, instance, action):
         return instance.item_state.get("charges", 0) > 0
 
-    def show_squeeze_wotsit(self, instance):
-        return "cypherpunk/interact/wotsit_squeeze.jinja2#show"
-
-    def handle_squeeze_wotsit(self, instance, request):
-        instance.item_state.put("charges", instance.item_state.get("charges", 0) - 1)
-        return f"Squeezed! Charges left: {instance.item_state.get('charges', 0)}"
+    def handle(self, instance, action, request):
+        charges = instance.item_state.get("charges", 0)
+        instance.item_state.put("charges", charges - 1)
+        return f"Squeezed! Charges left: {charges - 1}"
 ```
 
+- `instance` is the `LocationItem`/`InventoryItem` the player is acting on
+  (use `instance.item_state` for state, `instance.is_in_inventory` to ask where it is).
+- For a class with a single simple action, the behaviour can go straight on the
+  `Action`: `Action("read", label="Read it", handle=my_callable)`.
+- `get_actions()` may be overridden to compute the action list from
+  `self.options` (the item's `interaction_options` JsonField).
+
+**Wire it up in a release step:**
+
+```python
+@release_step(7)
+def add_wotsit(self):
+    Item.objects.create(
+        game=self,
+        asset_id="WOTSIT",
+        name="A Wotsit",
+        description="A little worn but functional",
+        interaction=Wotsit.dotted_path(),
+        interaction_options={"charges": 3},  # optional per-item config
+    )
+```
+
+Use `Wotsit.dotted_path()` (never a hand-typed string) so renames are caught by
+your IDE. Moving or renaming an interaction class is a breaking change: it
+needs a release step that rewrites affected items' `interaction` field. The
+`nilpoint_check_interactions` management command resolves every configured
+interaction and fails on any that no longer import, so the problem shows up in
+development rather than in play.
+
 **Dispatch from the client (HTMX):**
+
+The `handle_interact` view is registered as action `"interact"` in
+`NilpointGameBasic`. It runs the three phases via POST with parameters
+`target_type` (`location_item`, `inventory_item`, or any other interactive
+asset type), `object_id`, `action`, and `phase`.
+
 ```html
 <!-- Show phase: render action UI -->
 <button hx-post="{% nilpoint_action_url game 'interact' %}"
-        hx-vals='{"item_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "show"}'
+        hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "show"}'
         hx-target="#interaction-panel">
   Squeeze
 </button>
 
 <!-- Handle phase: execute action -->
 <button hx-post="{% nilpoint_action_url game 'interact' %}"
-        hx-vals='{"item_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "handle"}'
+        hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "handle"}'
         hx-target="#messages">
   Squeeze!
 </button>
 ```
 
 **Template tag for rendering available actions:**
+
 ```jinja2
 {% load nilpoint_tags %}
 
-{# Renders buttons for all "show" hooks that pass their "can" check #}
-{% nilpoint_interact_actions location_item "location_item" target="#interaction-panel" %}
+{# Renders a button per action that passes its "can" check, for any
+   interactive record (LocationItem, InventoryItem, or an interactive asset) #}
+{% nilpoint_interact_actions location_item target="#interaction-panel" %}
 ```
 
-**Default dispatch view:**
-The `handle_interact` view is registered as action `"interact"` in `NilpointGameBasic`. It handles all three phases via POST with parameters: `item_type` (`location_item` or `inventory_item`), `object_id`, `action`, `phase`.
+The `nilpoint_check_interactions` command also summarises configured
+interactions (`--actions` lists each class's actions; `--game <slug>` limits by
+game).
 
 ### Item take/drop mechanics
 
@@ -260,6 +299,7 @@ Nilpoint provides template tags in `nilpoint_tags` to simplify common HTMX patte
 | `nilpoint_panel` | HTMX panel div (GET) | `panel_id`, `action`, `triggers`, `target`, `swap` |
 | `nilpoint_action` | Action link/button | `text`, `action`, `method`, `target`, `swap`, `classes` |
 | `nilpoint_form` | Form (GET+POST) | `form_id`, `action`, `method`, `target`, `swap` |
+| `nilpoint_interact_actions` | One button per available interaction action | `instance`, `show_phase`, `target`, `swap`, `classes` |
 
 All tags auto-generate the dispatch URL from the `game` in context.
 

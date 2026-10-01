@@ -15,6 +15,7 @@ from .models import (
     LocationItem,
     ItemState,
 )
+from .exceptions import UnresolvableInteraction
 
 
 @admin.register(Player)
@@ -56,34 +57,34 @@ class ExitAdmin(admin.ModelAdmin):
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     model = Item
-    list_display = ["name", "asset_id", "graphic", "hooks_preview"]
-    readonly_fields = ["hooks_display"]
+    list_display = ["name", "asset_id", "graphic", "interaction_summary"]
+    readonly_fields = ["interaction_detail"]
 
-    @admin.display(description="Hooks")
-    def hooks_preview(self, obj):
-        """Show a preview of the hooks in list view."""
-        data = obj.hooks._data
-        if not data:
-            return "—"
-        preview_parts = []
-        for phase, actions in data.items():
-            if actions:
-                preview_parts.append(f"{phase}:{len(actions)}")
-        if not preview_parts:
-            return "—"
-        return ", ".join(preview_parts)
-
-    @admin.display(description="Item Hooks")
-    def hooks_display(self, obj):
-        """Show full hooks in detail view as formatted JSON."""
-        data = obj.hooks._data
-        if not data:
-            return "No hooks data"
+    @admin.display(description="Interaction")
+    def interaction_summary(self, obj):
+        """Show which class handles this item, and how many actions it offers."""
         try:
-            formatted = json.dumps(data, indent=2, default=str)
-            return format_html("<pre>{}</pre>", formatted)
-        except Exception:
-            return format_html("<pre>{}</pre>", str(obj.hooks._data))
+            described = obj.describe_interaction()
+        except UnresolvableInteraction as e:
+            return format_html('<span style="color:red">{}</span>', e)
+        if not described:
+            return "—"
+        action_count = len(described["actions"])
+        return f"{described['class']} ({action_count} action{'s' if action_count != 1 else ''})"
+
+    @admin.display(description="Interaction detail")
+    def interaction_detail(self, obj):
+        """Show the interaction class, its actions and its options."""
+        try:
+            described = obj.describe_interaction()
+        except UnresolvableInteraction as e:
+            return format_html('<pre style="color:red">{}</pre>', e)
+        if not described:
+            return "No interaction configured"
+        return format_html(
+            "<pre>{}</pre>",
+            json.dumps(described, indent=2, default=str),
+        )
 
 
 @admin.register(InventoryItem)
