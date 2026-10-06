@@ -215,6 +215,17 @@ class NilpointGameBasic(View):
             # response["HX-Trigger"] = kwargs["trigger"]
         return response
 
+    def _error_response(self, message):
+        """Build an error response that also logs the message.
+
+        The message is both the response body (for callers that still render
+        it) and an entry in the player log at level "error", so failures stay
+        visible even when the triggering element uses swap="none".
+        """
+        response = HtmxTriggerResponse(content=message, content_type="text/plain")
+        response.add_log_item(message, level="error")
+        return response
+
     def _request_wrapper(func):
 
         @wraps(func)
@@ -332,12 +343,9 @@ class NilpointGameBasic(View):
                 pc = PlayerCharacter.objects.get_subclass(id=selected_pc)
 
             except PlayerCharacter.DoesNotExist:
-                response = HtmxTriggerResponse(
-                    content=f"Couldn't find selected player character '{selected_pc}'",
-                    content_type="text/plain",
+                return self._error_response(
+                    f"Couldn't find selected player character '{selected_pc}'"
                 )
-                response.add_trigger("player_location_changed")
-                return response
 
         if pc.player == self.player and pc.game == self.game:
             self.player_character = pc
@@ -351,11 +359,7 @@ class NilpointGameBasic(View):
             return response
         else:
             self.player_character = None
-            response = HtmxTriggerResponse(
-                content="Couldn't match selected pc", content_type="text/plain"
-            )
-            response.add_trigger("player_location_changed")
-            return response
+            return self._error_response("Couldn't match selected pc")
 
     @_request_wrapper
     def get(self, request, *args, **kwargs):
@@ -493,51 +497,31 @@ class NilpointGameBasic(View):
         """
         location_item_id = request.POST.get("location_item", None)
         if location_item_id is None:
-            return HtmxTriggerResponse(
-                content="No location_item given in POST parameters",
-                content_type="text/plain",
-            )
+            return self._error_response("No location_item given in POST parameters")
         try:
             location_item_id = int(location_item_id)
         except (TypeError, ValueError):
-            return HtmxTriggerResponse(
-                content="Invalid location_item id", content_type="text/plain"
-            )
+            return self._error_response("Invalid location_item id")
 
         pc = self.player_character
         if pc is None:
-            return HtmxTriggerResponse(
-                content="No player character selected",
-                content_type="text/plain",
-            )
+            return self._error_response("No player character selected")
 
         location_item = LocationItem.objects.filter(id=location_item_id, pc=pc).first()
         if location_item is None:
-            return HtmxTriggerResponse(
-                content="Location item not found or not yours",
-                content_type="text/plain",
-            )
+            return self._error_response("Location item not found or not yours")
 
         # Check the location matches player's current location
         if location_item.location != pc.current_location:
-            return HtmxTriggerResponse(
-                content="Item is not at your current location",
-                content_type="text/plain",
-            )
+            return self._error_response("Item is not at your current location")
 
         # Check the item belongs to the current game
         if location_item.item.game != self.game:
-            return HtmxTriggerResponse(
-                content="Item is not part of this game",
-                content_type="text/plain",
-            )
+            return self._error_response("Item is not part of this game")
 
         # Check can_take on the item
         if not location_item.item.can_take:
-            return HtmxTriggerResponse(
-                content="This item cannot be taken",
-                content_type="text/plain",
-            )
+            return self._error_response("This item cannot be taken")
 
         # Create inventory item and delete location item
         inventory_item = InventoryItem.objects.create(pc=pc, item=location_item.item)
@@ -568,52 +552,32 @@ class NilpointGameBasic(View):
         """
         inventory_item_id = request.POST.get("inventory_item", None)
         if inventory_item_id is None:
-            return HtmxTriggerResponse(
-                content="No inventory_item given in POST parameters",
-                content_type="text/plain",
-            )
+            return self._error_response("No inventory_item given in POST parameters")
         try:
             inventory_item_id = int(inventory_item_id)
         except (TypeError, ValueError):
-            return HtmxTriggerResponse(
-                content="Invalid inventory_item id", content_type="text/plain"
-            )
+            return self._error_response("Invalid inventory_item id")
 
         pc = self.player_character
         if pc is None:
-            return HtmxTriggerResponse(
-                content="No player character selected",
-                content_type="text/plain",
-            )
+            return self._error_response("No player character selected")
 
         if pc.current_location is None:
-            return HtmxTriggerResponse(
-                content="You are not at a location",
-                content_type="text/plain",
-            )
+            return self._error_response("You are not at a location")
 
         inventory_item = InventoryItem.objects.filter(
             id=inventory_item_id, pc=pc
         ).first()
         if inventory_item is None:
-            return HtmxTriggerResponse(
-                content="Inventory item not found or not yours",
-                content_type="text/plain",
-            )
+            return self._error_response("Inventory item not found or not yours")
 
         # Check the item belongs to the current game
         if inventory_item.item.game != self.game:
-            return HtmxTriggerResponse(
-                content="Item is not part of this game",
-                content_type="text/plain",
-            )
+            return self._error_response("Item is not part of this game")
 
         # Check can_drop on the item
         if not inventory_item.item.can_drop:
-            return HtmxTriggerResponse(
-                content="This item cannot be dropped",
-                content_type="text/plain",
-            )
+            return self._error_response("This item cannot be dropped")
 
         # Create location item and delete inventory item
         location_item = LocationItem.objects.create(
@@ -1057,7 +1021,8 @@ class NilpointGameBasic(View):
                 *args,
                 **kwargs,
             )
-            response.add_trigger("player_location_changed")
+            # The message is displayed inline in the form itself; nothing else
+            # on the page has changed, so there is no redraw trigger to fire.
             return response
 
         url = f"{self.game.get_dispatch_url()}?action=new_player_character"

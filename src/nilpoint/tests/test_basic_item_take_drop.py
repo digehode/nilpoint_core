@@ -264,6 +264,74 @@ class ItemTakeDropTests(TestCase):
             [{"message": f"Took {self.item.name}", "level": "success"}],
         )
 
+    def test_take_error_is_logged_as_error(self):
+        """A refused take is logged with level error."""
+        location_item = models.LocationItem.objects.create(
+            location=self.location, pc=self.pc, item=self.item_notake
+        )
+
+        response = self._post_request("take_item", {"location_item": location_item.id})
+        triggers = json.loads(response.get("HX-Trigger", "{}"))
+        self.assertEqual(
+            triggers["nilpoint_log"]["messages"],
+            [{"message": "This item cannot be taken", "level": "error"}],
+        )
+
+    def test_drop_error_is_logged_as_error(self):
+        """A refused drop is logged with level error."""
+        inventory_item = models.InventoryItem.objects.create(
+            pc=self.pc, item=self.item_nodrop
+        )
+
+        response = self._post_request(
+            "drop_item", {"inventory_item": inventory_item.id}
+        )
+        triggers = json.loads(response.get("HX-Trigger", "{}"))
+        self.assertEqual(
+            triggers["nilpoint_log"]["messages"],
+            [{"message": "This item cannot be dropped", "level": "error"}],
+        )
+
+    # ===== Player character selection =====
+
+    def test_select_unknown_pc_is_logged_without_location_trigger(self):
+        """Selecting a non-existent character logs an error, no location redraw."""
+        response = self._post_request(
+            "select_player_character", {"player_character": 999999}
+        )
+        triggers = json.loads(response.get("HX-Trigger", "{}"))
+        self.assertEqual(
+            triggers["nilpoint_log"]["messages"],
+            [
+                {
+                    "message": "Couldn't find selected player character '999999'",
+                    "level": "error",
+                }
+            ],
+        )
+        self.assertNotIn("player_location_changed", triggers)
+
+    def test_select_another_players_pc_is_logged_without_location_trigger(self):
+        """Selecting another player's character logs an error, no location redraw."""
+        response = self._post_request(
+            "select_player_character", {"player_character": self.pc2.id}
+        )
+        triggers = json.loads(response.get("HX-Trigger", "{}"))
+        self.assertEqual(
+            triggers["nilpoint_log"]["messages"],
+            [{"message": "Couldn't match selected pc", "level": "error"}],
+        )
+        self.assertNotIn("player_location_changed", triggers)
+
+    # ===== Player character creation =====
+
+    def test_new_player_character_blocked_message_has_no_location_trigger(self):
+        """Blocking a second character renders inline without a location redraw."""
+        response = self._post_request("new_player_character", {})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("more than one player character", response.content.decode())
+        self.assertNotIn("player_location_changed", response.get("HX-Trigger", ""))
+
     # ===== POST required =====
 
     def test_take_get_request_fails(self):
