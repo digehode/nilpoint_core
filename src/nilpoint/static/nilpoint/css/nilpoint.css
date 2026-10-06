@@ -182,3 +182,94 @@ img.fade {
     width: auto;
     vertical-align: middle;
 }
+
+/* Log terminal effect */
+
+/* Terminal Container */
+#nilpoint-log {
+    font-family: "Kode Mono", monospace;
+    background-color: #0c100c;
+    color: #00ff66;
+    padding: 1.25rem;
+    border: 2px solid #00ff66;
+    border-radius: 6px;
+    box-shadow:
+        0 0 15px rgba(0, 255, 102, 0.15),
+        inset 0 0 15px rgba(0, 0, 0, 0.8);
+    max-height: 400px;
+    overflow-y: auto;
+    position: relative;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+/* Optional CRT Scanline Effect Overlay */
+#nilpoint-log::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.25) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.6;
+}
+
+/* Base Log Entry */
+.nilpoint-log-entry {
+    position: relative;
+    z-index: 1;
+    padding: 0.25rem 0.5rem;
+    margin-bottom: 0.2rem;
+    border-left: 3px solid transparent;
+    word-break: break-word;
+    transition: background-color 0.15s ease;
+}
+
+.nilpoint-log-entry:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Log Entry Variants */
+.nilpoint-log-entry.info {
+    color: #00e5ff;
+    border-left-color: #00e5ff;
+    text-shadow: 0 0 5px rgba(0, 229, 255, 0.4);
+}
+
+.nilpoint-log-entry.success {
+    color: #33ff77;
+    border-left-color: #33ff77;
+    text-shadow: 0 0 5px rgba(51, 255, 119, 0.4);
+}
+
+.nilpoint-log-entry.error {
+    color: #ff4d4d;
+    border-left-color: #ff4d4d;
+    text-shadow: 0 0 5px rgba(255, 77, 77, 0.4);
+}
+
+/* Terminal Custom Scrollbar */
+#nilpoint-log::-webkit-scrollbar {
+    width: 8px;
+}
+
+#nilpoint-log::-webkit-scrollbar-track {
+    background: #080a08;
+}
+
+#nilpoint-log::-webkit-scrollbar-thumb {
+    background: #005522;
+    border-radius: 2px;
+}
+
+#nilpoint-log::-webkit-scrollbar-thumb:hover {
+    background: #00ff66;
+}
+/* END LOG TERMINAL EFFECT */

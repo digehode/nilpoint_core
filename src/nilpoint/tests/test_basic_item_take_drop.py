@@ -15,6 +15,7 @@ Tests cover:
 - HTMX triggers are properly returned
 """
 
+import json
 from uuid import uuid4
 
 from django.test import TestCase
@@ -228,25 +229,40 @@ class ItemTakeDropTests(TestCase):
 
     # ===== HTMX Triggers =====
 
-    def test_take_returns_player_location_changed_trigger(self):
-        """Take response includes player_location_changed trigger."""
+    def test_take_returns_panel_refresh_triggers(self):
+        """Take response includes inventory/location panel refresh triggers."""
         location_item = models.LocationItem.objects.create(
             location=self.location, pc=self.pc, item=self.item
         )
 
         response = self._post_request("take_item", {"location_item": location_item.id})
-        triggers = response.get("HX-Trigger", "")
-        self.assertIn("player_location_changed", triggers)
+        triggers = json.loads(response.get("HX-Trigger", ""))
+        self.assertIn("inventory_items_changed", triggers)
+        self.assertIn("location_items_changed", triggers)
 
-    def test_drop_returns_player_location_changed_trigger(self):
-        """Drop response includes player_location_changed trigger."""
+    def test_drop_returns_panel_refresh_triggers(self):
+        """Drop response includes inventory/location panel refresh triggers."""
         inventory_item = models.InventoryItem.objects.create(pc=self.pc, item=self.item)
 
         response = self._post_request(
             "drop_item", {"inventory_item": inventory_item.id}
         )
-        triggers = response.get("HX-Trigger", "")
-        self.assertIn("player_location_changed", triggers)
+        triggers = json.loads(response.get("HX-Trigger", ""))
+        self.assertIn("inventory_items_changed", triggers)
+        self.assertIn("location_items_changed", triggers)
+
+    def test_take_returns_nilpoint_log_trigger(self):
+        """Take response carries the take message in a nilpoint_log trigger."""
+        location_item = models.LocationItem.objects.create(
+            location=self.location, pc=self.pc, item=self.item
+        )
+
+        response = self._post_request("take_item", {"location_item": location_item.id})
+        triggers = json.loads(response.get("HX-Trigger", "{}"))
+        self.assertEqual(
+            triggers["nilpoint_log"]["messages"],
+            [{"message": f"Took {self.item.name}", "level": "success"}],
+        )
 
     # ===== POST required =====
 

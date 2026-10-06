@@ -10,7 +10,8 @@
                     {{ location_item.item.name }}
                     {% nilpoint_action "Detail" "item_detail" location_item=location_item.id target="#nilpoint-item-detail-panel" %}
                     {% if location_item.item.can_take %}
-                        {% nilpoint_action "Take" "take_item" method="POST" location_item=location_item.id %}
+                        {# don't swap. The trigger on a successful take will pick up a need to request the panel content #}
+                        {% nilpoint_action "Take" "take_item" method="POST" location_item=location_item.id swap="none" %}
                     {% endif %}
                 </li>
             {% empty %}

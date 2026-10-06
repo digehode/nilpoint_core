@@ -72,6 +72,7 @@ class HtmxTriggerResponse(HttpResponse):
     def __init__(self, trigger_name=None, trigger_data=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.htmx_triggers = {}
+        self._log = []
         if trigger_name:
             self.htmx_triggers[trigger_name] = (
                 trigger_data if trigger_data is not None else None
@@ -82,6 +83,11 @@ class HtmxTriggerResponse(HttpResponse):
         self.htmx_triggers[trigger_name] = trigger_data
 
     def serialize_htmx_headers(self):
+        if self._log:
+            # Serialise the collection in the final json.dumps below, rather
+            # than stringifying it first - the browser then receives a real
+            # `messages` list instead of a JSON string it must parse.
+            self.htmx_triggers["nilpoint_log"] = {"messages": self._log}
         if self.htmx_triggers:
             triggers_serial = json.dumps(self.htmx_triggers)
             self["HX-Trigger"] = triggers_serial
@@ -99,6 +105,10 @@ class HtmxTriggerResponse(HttpResponse):
         )
 
         return custom_response
+
+    def add_log_item(self, message, level="success"):
+        """Adds a message to the log"""
+        self._log.append({"message": message, "level": level})
 
 
 class NilpointAdminPanel(UserPassesTestMixin, View):
@@ -533,12 +543,16 @@ class NilpointGameBasic(View):
         inventory_item = InventoryItem.objects.create(pc=pc, item=location_item.item)
         transfer_item_state(location_item, inventory_item)
         location_item.delete()
+        message = f"Took {location_item.item.name}"
 
         response = HtmxTriggerResponse(
-            content=f"Took {location_item.item.name}",
+            content=message,
             content_type="text/plain",
         )
-        response.add_trigger("player_location_changed")
+
+        response.add_log_item(message)
+        response.add_trigger("inventory_items_changed")
+        response.add_trigger("location_items_changed")
         return response
 
     @require_http_methods("POST")
@@ -608,11 +622,15 @@ class NilpointGameBasic(View):
         transfer_item_state(inventory_item, location_item)
         inventory_item.delete()
 
+        message = f"Dropped {inventory_item.item.name}"
         response = HtmxTriggerResponse(
-            content=f"Dropped {inventory_item.item.name}",
+            content=message,
             content_type="text/plain",
         )
-        response.add_trigger("player_location_changed")
+
+        response.add_log_item(message)
+        response.add_trigger("inventory_items_changed")
+        response.add_trigger("location_items_changed")
         return response
 
     @require_http_methods("GET", "POST")

@@ -9,7 +9,8 @@
                 {{ inventory_item.item.name }}
                 {% nilpoint_action "Detail" "item_detail" inventory_item=inventory_item.id target="#nilpoint-item-detail-panel" %}
                 {% if inventory_item.item.can_drop %}
-                    {% nilpoint_action "Drop" "drop_item" method="POST" inventory_item=inventory_item.id %}
+                    {# here we request the drop but rely on the trigger to update the panel, not the content of the request return.   #}
+                    {% nilpoint_action "Drop" "drop_item" method="POST" inventory_item=inventory_item.id swap="none" %}
                 {% endif %}
             </li>
         {% empty %}
