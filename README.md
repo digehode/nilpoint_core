@@ -199,6 +199,54 @@ The `nilpoint_check_interactions` command also summarises configured
 interactions (`--actions` lists each class's actions; `--game <slug>` limits by
 game).
 
+### Player log messages
+
+Any handler can send one or more short messages to the player through the same
+response that refreshes the page panels. `HtmxTriggerResponse` keeps a
+per-response message buffer: call `add_log_item(...)` as many times as you like
+and every message is placed in the response before it is sent.
+
+```python
+response = HtmxTriggerResponse(content="Took the wotsit", content_type="text/plain")
+response.add_log_item("You take the wotsit.")
+response.add_log_item("It smells faintly of cheese.", level="info")
+response.add_trigger("location_items_changed")
+```
+
+- `level` maps to a CSS class on the log entry: `success` (the
+  default), `info`, or `error`. Feel free to send other classes, just
+  make sure you add css to cover them in the browser.
+- The default landing page has a `#nilpoint-log` panel; a small script
+  listens for the `nilpoint_log` event that the response fires and
+  appends one entry per message. If you write your own landing page,
+  either steal the log script or do soemthign else with it that makes
+  more sense for you.
+- The log is ephemeral - nothing is stored in the database. It survives HTMX
+  round-trips (the panel lives in the landing partial) but is lost on a full
+  page load. Each response starts with an empty buffer, so a message from one
+  request never leaks into the next.
+  - THIS MAY CHANGE IN FUTURE. I'm considering using client side
+    storage to hold them. Avoiding adding server side storage for now.
+- The messages ride the `HX-Trigger` header, so buttons that only
+  report via the log usually use `swap="none"` (see the take/drop
+  buttons) - the message appears in the log instead of replacing the
+  control that was clicked. Error is meant for errors the user should
+  see, not system errors too: `response.add_log_item("That wotsit is
+  too heavy to take", level="error")`. But it's up to you.
+
+The log has no markup of its own, just plain CSS selectors, so a game can
+restyle it by overriding the defaults:
+
+| Selector | Purpose |
+|----------|---------|
+| `#nilpoint-log` | the log container (the box itself) |
+| `#nilpoint-log::before` | the scanline overlay used by the default theme |
+| `.nilpoint-log-entry` | a single logged message |
+| `.nilpoint-log-entry.info` / `.success` / `.error` | the `level` class variant |
+
+The default styling in `nilpoint.css` is a green-on-black terminal; a game can
+restyle by overriding the same selectors, or hide the log entirely.
+
 ### Item take/drop mechanics
 
 ## Game archetypes and model overrides
