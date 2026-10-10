@@ -599,54 +599,57 @@ class NilpointGameBasic(View):
 
     @require_http_methods("GET", "POST")
     def handle_interact(self, request, *args, **kwargs):
-        """Run a phase of a player interaction with an interactive asset.
+        """Show or run a player interaction with an interactive asset.
 
         The asset's `interaction` field names an `InteractiveItem` subclass,
         which is instantiated and asked for behaviour.  Nothing here knows the
         name of any particular action.
 
-        POST with:
+        GET or POST with:
             - target_type: what the player interacted with.  "location_item"
               or "inventory_item" for items, or any interactive asset type,
               e.g. "exit".
             - object_id: the primary key of that record.
-            - action: the action name, as declared by the interaction class.
-            - phase: "show", "handle", or "can".
+            - action_name: optional.  The action name, as declared by the
+              interaction class.  Called "action_name" because "action" in
+              the query string is the dispatch router's handler selector.
 
-        Phases:
-            - "show": returns the action's partial, rendered with the current
-              state.  This is what a button opens.
-            - "handle": gates on "can", performs the action, then re-renders
-              the partial so the player sees the new state.
-            - "can": returns JSON {"allowed": bool, "reason": str}.  The
-              template tags apply this rule themselves, so this phase exists
-              for clients that need to ask explicitly.
-
-        The `can` gate is enforced here, not just in the UI: a "handle" request
-        for an unavailable action is refused before the action runs.
+        A request with no `action_name` renders the interaction's panel - its
+        `partial` with the current state.  This is what the item detail
+        auto-loads, and it is not an action: showing the panel never does
+        anything.  A request with an `action_name` is gated by `can` - the
+        interaction's authoritative judgement and the action's own gate both
+        pass - and performed by the action's `handle`, then re-renders the
+        panel so the player sees the new state.  The gates are enforced here,
+        not just in the UI, so a request that bypasses the buttons still
+        cannot do the thing.  Interface loads use GET; an action that sends
+        data (a form in the interface) should POST it.
 
         Returns:
-            `HtmxTriggerResponse` in every case.  For "handle", the action may
-            influence the response: returning a string sends that text back,
-            returning an `HttpResponse` is used as-is, and returning None has
-            the partial re-rendered.
+            `HtmxTriggerResponse` in every case, holding the interaction
+            panel.  When an action ran, its return value contributes a
+            player-log message: a returned string, or the text content of a
+            returned `HttpResponse`, becomes the message; triggers set on a
+            returned `HtmxTriggerResponse` are preserved; and returning None
+            means no message.
         """
-        target_type = request.POST.get("target_type", None)
-        object_id = request.POST.get("object_id", None)
-        action_name = request.POST.get("action", None)
-        phase = request.POST.get("phase", None)
+        target_type = request.POST.get("target_type", None) or request.GET.get(
+            "target_type", None
+        )
+        object_id = request.POST.get("object_id", None) or request.GET.get(
+            "object_id", None
+        )
+        action_name = request.POST.get("action_name", None) or request.GET.get(
+            "action_name", None
+        )
 
-        if not all([target_type, object_id, action_name, phase]):
+        if not all([target_type, object_id]):
             return HtmxTriggerResponse(
                 content=(
-                    "Missing required parameters: target_type, object_id, action, phase"
+                    "Missing required parameters: target_type, object_id "
+                    "(action_name is optional - without one this request shows "
+                    "the interaction's panel)"
                 ),
-                content_type="text/plain",
-            )
-
-        if phase not in ("show", "handle", "can"):
-            return HtmxTriggerResponse(
-                content=f"Invalid phase '{phase}'. Must be 'show', 'handle', or 'can'",
                 content_type="text/plain",
             )
 
@@ -682,94 +685,69 @@ class NilpointGameBasic(View):
                 content_type="text/plain",
             )
 
-        action = interaction.get_action(action_name)
-        if action is None:
-            return HtmxTriggerResponse(
-                content=(
-                    f"'{type(interaction).__name__}' has no action '{action_name}'"
-                ),
-                content_type="text/plain",
-            )
-
-        if phase == "can":
+        # An action_name means "do the action": it is gated by `can` and
+        # performed by `handle`, then the panel re-renders with the new state.
+        # Without one this request is a panel load - the item detail
+        # auto-loading the interaction - which is not an action.
+        action = None
+        message = None
+        action_triggers = {}
+        if action_name is not None:
+            action = interaction.get_action(action_name)
+            if action is None:
+                return HtmxTriggerResponse(
+                    content=(
+                        f"'{type(interaction).__name__}' has no action '{action_name}'"
+                    ),
+                    content_type="text/plain",
+                )
+            # The gates are enforced here, not only in the UI, so that a
+            # request that bypasses the buttons still cannot do the thing.
+            # The interaction's `can` is the authoritative judgement; the
+            # action's own `can` speaks for itself, and both must pass.
             try:
-                allowed = bool(interaction.can(instance, action))
+                allowed = bool(interaction.can(instance, action)) and bool(
+                    action.can(instance, interaction)
+                )
             except Exception as e:
                 return HtmxTriggerResponse(
                     content=f"Error in can: {e}", content_type="text/plain"
                 )
-            return HtmxTriggerResponse(
-                content=json.dumps({"allowed": allowed}),
-                content_type="application/json",
-            )
+            if not allowed:
+                return self._error_response(
+                    f"Can't {action.display_label.lower()} that right now"
+                )
 
-        if phase == "show":
             try:
-                partial = interaction.show(instance, action)
+                result = action.handle(instance, interaction, request)
             except Exception as e:
                 return HtmxTriggerResponse(
-                    content=f"Error in show: {e}", content_type="text/plain"
+                    content=f"Error in handle: {e}", content_type="text/plain"
                 )
-            if not partial:
-                return HtmxTriggerResponse(
-                    content=(f"Action '{action.name}' has nothing to show"),
-                    content_type="text/plain",
-                )
-            context = self._get_interaction_context(
-                instance, asset, interaction, action
-            )
-            return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
-        # phase == "handle".  The gate is enforced here, not only in the UI, so
-        # that a request that bypasses the buttons still cannot do the thing.
-        try:
-            allowed = bool(interaction.can(instance, action))
-        except Exception as e:
-            return HtmxTriggerResponse(
-                content=f"Error in can: {e}", content_type="text/plain"
-            )
-        if not allowed:
-            response = HtmxTriggerResponse(
-                content=f"Can't {action.display_label.lower()} that right now",
-                content_type="text/plain",
-            )
-            response.add_trigger("player_location_changed")
-            return response
+            # The interaction panel is re-rendered after every action, so the
+            # player always sees the interaction UI in its new state.  The
+            # action's return value only contributes a player-log message: a
+            # string is the message, the text content of a returned
+            # HttpResponse is logged instead of swapped over the UI, and None
+            # means no message.  Triggers set on a returned response are
+            # preserved so an action can still refresh other panels.
+            if isinstance(result, str):
+                message = result
+            elif isinstance(result, HttpResponse):
+                try:
+                    message = result.content.decode("utf-8") or None
+                except (AttributeError, UnicodeDecodeError):
+                    message = None
+                action_triggers = dict(getattr(result, "htmx_triggers", {}))
 
-        try:
-            result = interaction.handle(instance, action, request)
-        except Exception as e:
-            return HtmxTriggerResponse(
-                content=f"Error in handle: {e}", content_type="text/plain"
-            )
-
-        # The action chose the response.  A returned response is used as-is, a
-        # returned string is sent to the player, and None re-renders the
-        # partial so the new state is visible.
-        if isinstance(result, HttpResponse):
-            return result
-        if isinstance(result, str):
-            response = HtmxTriggerResponse(content=result, content_type="text/plain")
-            response.add_trigger("player_location_changed")
-            return response
-
-        try:
-            partial = interaction.show(instance, action)
-        except Exception as e:
-            return HtmxTriggerResponse(
-                content=f"Error in show after handle: {e}", content_type="text/plain"
-            )
-
-        if partial:
-            context = self._get_interaction_context(
-                instance, asset, interaction, action
-            )
-            return self.nilpoint_render(request, partial, context, *args, **kwargs)
-
-        # The action changed something but has no partial to show, so ask the
-        # page to refresh the panels that might display it.
-        response = HtmxTriggerResponse(content="OK", content_type="text/plain")
-        response.add_trigger("player_location_changed")
+        partial = interaction.partial or "nilpoint/action_panel.jinja2#action_list"
+        context = self._get_interaction_context(instance, asset, interaction)
+        response = self.nilpoint_render(request, partial, context, *args, **kwargs)
+        for trigger_name, trigger_data in action_triggers.items():
+            response.add_trigger(trigger_name, trigger_data)
+        if message:
+            response.add_log_item(message)
         return response
 
     def _get_interaction_target(self, target_type, object_id):
@@ -828,27 +806,23 @@ class NilpointGameBasic(View):
 
         return instance, asset
 
-    def _get_interaction_context(self, instance, asset, interaction, action):
-        """Build the template context for an interaction partial.
+    def _get_interaction_context(self, instance, asset, interaction):
+        """Build the template context for an interaction panel.
 
-        The stable keys - `instance`, `item`, `asset`, `action`, `phase`,
-        `state`, `pc` and `interaction` - are always present.  Games add their
-        own by overriding `InteractiveItem.get_context()`.
+        The stable keys - `instance`, `item`, `asset`, `state`, `pc` and
+        `interaction` - are always present.  Games add their own by overriding
+        `InteractiveItem.get_context(instance)`.
         """
         context = {
             "instance": instance,
             "item": asset,
             "asset": asset,
-            "action": action,
-            # The partial is rendered to show the action's result, so the
-            # buttons it offers are for the next phase.
-            "phase": "handle",
             "state": instance.item_state if instance is not None else {},
             "pc": self.player_character,
             "interaction": interaction,
         }
         try:
-            extra = interaction.get_context(instance, action)
+            extra = interaction.get_context(instance)
         except Exception:
             extra = None
         if extra:
@@ -859,11 +833,18 @@ class NilpointGameBasic(View):
     def handle_item_detail(self, request, *args, **kwargs):
         """Return the detail view of a single item instance (graphic, name, description).
 
-        The instance ID should be given as 'location_item' or 'inventory_item' in the request.
-        The instance must belong to the current player character and game instance.
+        The instance ID should be given as 'location_item' or 'inventory_item'
+        in the request. The instance must belong to the current player
+        character and game instance.
 
-        - Override item_detail_partial used to render the content.
+        The detail is self-refreshing: it re-requests itself when items move
+        between the location and the inventory, or the player changes location
+        or character. A request for an instance that is gone, or that the
+        character can no longer reach, renders nothing, so the region blanks
+        rather than going stale.
 
+        - Override item_detail_partial with the content rendered inside the
+          detail's refresh wrapper.
         """
         location_item_id = request.GET.get("location_item", None) or request.POST.get(
             "location_item", None
@@ -872,65 +853,77 @@ class NilpointGameBasic(View):
             "inventory_item", None
         )
 
-        if not location_item_id and not inventory_item_id:
-            return HtmxTriggerResponse(
-                content="No location_item or inventory_item given in request parameters",
-                content_type="text/plain",
-            )
-
         pc = self.player_character
         if pc is None:
-            return HtmxTriggerResponse(
-                content="No player character selected",
-                content_type="text/plain",
-            )
-
-        instance = None
-        instance_type = None
+            return self._blank_detail()
 
         if location_item_id:
-            try:
-                location_item_id = int(location_item_id)
-            except (TypeError, ValueError):
-                return HtmxTriggerResponse(
-                    content="Invalid location_item id", content_type="text/plain"
-                )
-            instance = LocationItem.objects.filter(id=location_item_id, pc=pc).first()
+            instance = self._find_detail_instance(LocationItem, location_item_id, pc)
             instance_type = "location_item"
-        else:
-            try:
-                inventory_item_id = int(inventory_item_id)
-            except (TypeError, ValueError):
-                return HtmxTriggerResponse(
-                    content="Invalid inventory_item id", content_type="text/plain"
-                )
-            instance = InventoryItem.objects.filter(id=inventory_item_id, pc=pc).first()
+        elif inventory_item_id:
+            instance = self._find_detail_instance(InventoryItem, inventory_item_id, pc)
             instance_type = "inventory_item"
+        else:
+            return self._blank_detail()
 
-        if instance is None:
-            return HtmxTriggerResponse(
-                content="Instance not found or not yours",
-                content_type="text/plain",
-            )
-
-        # Check the item belongs to the current game
-        if instance.item.game != self.game:
-            return HtmxTriggerResponse(
-                content="Item is not part of this game",
-                content_type="text/plain",
-            )
+        if instance is None or instance.item.game_id != self.game.id:
+            return self._blank_detail()
+        if not self._item_detail_is_accessible(instance, pc):
+            return self._blank_detail()
 
         context = {
             "instance": instance,
             "item": instance.item,
             "instance_type": instance_type,
             "item_state_data": instance.item_state._data,
+            "item_detail_content": self._value_from_subclass_or_default(
+                "item_detail_partial",
+                "nilpoint/item_detail_panel.jinja2#item_detail_content",
+            ),
+            "item_detail_refresh_url": (
+                f"{self.game.get_dispatch_url()}?action=item_detail"
+                f"&{instance_type}={instance.pk}"
+            ),
         }
-        partial = self._value_from_subclass_or_default(
-            "item_detail_partial",
+        return self.nilpoint_render(
+            request,
             "nilpoint/item_detail_panel.jinja2#item_detail",
+            context,
+            *args,
+            **kwargs,
         )
-        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    def _find_detail_instance(self, model, raw_id, pc):
+        """Return one of the character's item records, or None.
+
+        A malformed id is treated the same as a missing record: the detail
+        blanks either way.
+        """
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError):
+            return None
+        return model.objects.filter(id=item_id, pc=pc).first()
+
+    def _item_detail_is_accessible(self, instance, pc):
+        """Whether the character can still open this item's detail.
+
+        A location item must be where the character is, so walking away blanks
+        the detail; an inventory item is always carried, so it is always
+        accessible. Games override this to add their own rules - an item that
+        evaporates, a container that locks itself, and so on.
+        """
+        if isinstance(instance, LocationItem):
+            return instance.location_id == pc.current_location_id
+        return True
+
+    def _blank_detail(self):
+        """The empty detail region: no valid item is being examined.
+
+        The region swaps itself out on this response, so the panel empties; the
+        player opens a fresh detail from a list.
+        """
+        return HtmxTriggerResponse(content="", content_type="text/plain")
 
     @require_http_methods("POST")
     def handle_use_exit(self, request, *args, **kwargs):

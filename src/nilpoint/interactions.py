@@ -3,10 +3,10 @@
 An asset that a player can do something to - an `Item` today, and in due
 course an `Exit` or a `Location` - stores the dotted path of an
 `InteractiveItem` subclass in its `interaction` field.  That class is
-instantiated on demand and answers three questions: which actions the player
-may take, what to show for one, and what to do when it is chosen.
+instantiated on demand and answers two questions: which actions the player
+may take, and what to do when one is chosen.
 
-Declaring the behaviour as a class rather than as a dict of method names on
+Declaring the behaviour as classes rather than as dicts of method names on
 `Game` means the framework never has to look behaviour up by string, so
 renames and typos are caught by the interpreter rather than at play time.  It
 also means several items - in one game or in different games - can share a
@@ -18,41 +18,67 @@ Design notes
 * Interaction classes are **not** Django models.  They are short-lived,
   stateless helpers built once per request; anything that varies per player
   belongs in `item_state` (see `StatefulMixin`).
-* The set of actions is *declared* on the class using `Action`, so the
+* Responsibility is split down the middle.  The **interaction** is the home of
+  identity and judgement: it declares the `actions`, owns the authoritative
+  `can(instance, action)` gate (it sees the whole context - where the item
+  is, what the player has, what the player knows), picks the `partial`, and
+  computes extra panel context.  The **action** is the home of the effect:
+  it implements `handle(instance, interaction, request)`, and may declare a
+  `state_key` and use `get_state()`/`set_state()` to work against the
+  player's copy of the item.  Framework generics - `StateToggle`, `SetState` -
+  cover the common cases; anything else is a small `Action` subclass next to
+  the interaction that uses it.
+* Both `can` gates are enforced, by the view and by `available_actions()`,
+  before `handle` ever runs.  The interaction's gate is authoritative; an
+  action's own `can` exists for the cases an action can judge about itself.
+* The set of actions is *declared* on the interaction using `Action`, so the
   framework can enumerate actions for button rendering, admin display and
   validation without inspecting method names.
-* Behaviour is ordinary Python.  Subclasses override `can`, `show` and
-  `handle`, or attach a small callable to a single `Action` when a class only
-  offers one or two things.
+* An interaction renders exactly one partial - its `partial` attribute -
+  chosen at class level so every action behaves the same way.  The default
+  partial is one button per available action; a class with an interface of
+  its own (a device panel, a status readout) points `partial` at it.  The
+  panel is always shown when the item's detail renders, auto-loaded into the
+  item detail; showing it is not an action, so a panel load never names one.
 * Games should keep their interaction classes in `<app>/interactions.py`.
   The dotted path is stored in the database, so moving or renaming a class is
-  a breaking change that needs a release step; `nilpoint_check` reports the
-  paths in use and will fail loudly on one that no longer imports.
+  a breaking change that needs a release step; `nilpoint_check_interactions`
+  reports the paths in use and will fail loudly on one that no longer
+  imports.
 
 Example
 -------
 
     # cypherpunk/interactions.py
-    from nilpoint.interactions import Action, InteractiveItem
+    from nilpoint.interactions import Action, InteractiveItem, SetState
 
     class MysteryDevice(InteractiveItem):
-        \"\"\"A device that can be pushed once, then switched off again.\"\"\"
+        \"\"\"A device that has to be pushed before it can be switched off.\"\"\"
 
-        show_partial = "cypherpunk/interact/mystery_device.jinja2#device"
+        partial = "cypherpunk/interact/mystery_device.jinja2#device"
 
         actions = [
-            Action("push_button", label="Push button"),
-            Action("turn_off", label="Turn off"),
+            SetState(
+                "push_button",
+                label="Push button",
+                state_key="pushed",
+                value=True,
+                message="The device whirs into a steady hum.",
+            ),
+            SetState(
+                "turn_off",
+                label="Turn off",
+                state_key="pushed",
+                value=False,
+                message="The device falls silent.",
+            ),
         ]
 
         def can(self, instance, action):
             if not instance.is_in_inventory:
                 return False
-            return bool(instance.item_state.get("pushed")) == (action == "turn_off")
-
-        def handle(self, instance, action, request):
-            instance.item_state.put("pushed", action == "push_button")
-            return "Device activated" if action == "push_button" else "Device off"
+            is_pushed = bool(instance.item_state.get("pushed", False))
+            return is_pushed == (action.name == "turn_off")
 
     # cypherpunk/models.py, in a release step
     @release_step(7)
@@ -63,7 +89,6 @@ Example
             name="Mystery Device",
             description="A mysterious device with a button labelled 'push me'",
             interaction=MysteryDevice.dotted_path(),
-            interaction_options={"charges": 3},
         )
 """
 
@@ -99,7 +124,9 @@ class InteractiveMixin(models.Model):
 
         # anywhere you need the behaviour
         interaction = device.get_interaction(instance=some_location_item)
-        if interaction and interaction.can(some_location_item, "push_button"):
+        if interaction and interaction.can(
+            some_location_item, interaction.get_action("push_button")
+        ):
             ...
     """
 
@@ -202,10 +229,13 @@ class InteractiveMixin(models.Model):
 class Action:
     """One named thing a player can do to an interactive asset.
 
-    Actions are declared on an `InteractiveItem` subclass (as its `actions`
-    class attribute) so that the framework can enumerate them - for button
-    rendering, admin display and request validation - without the class having
-    to implement anything for the simple cases.
+    The Action is the home of the *effect*: it implements `handle()`, may
+    declare the `state_key` it touches and use `get_state()`/`set_state()`
+    against it, and can gate itself with an optional `can`.  Actions are
+    declared on an `InteractiveItem` subclass (as its `actions` class
+    attribute) so that the framework can enumerate them - for button
+    rendering, admin display and request validation - without the class
+    having to implement anything for the simple cases.
 
     Attributes:
         name: The action name, as sent to the dispatch view.  Unique within
@@ -213,25 +243,27 @@ class Action:
             as permanent once released.
         label: The text shown on the button.  Defaults to a title-cased
             version of `name`.
-        show: Template partial (`"app/template.jinja2#fragment"`) rendered for
-            this action.  Defaults to the class's `show_partial`.
-        can: Optional `callable(instance) -> bool` gating this action alone.
-            Ignored if the class overrides `InteractiveItem.can()`.
-        handle: Optional `callable(instance, request)` implementing the action.
-            If absent, the class's `InteractiveItem.handle()` is used.
         description: Optional prose, shown in admin listings.
+        state_key: Optional name of a per-player state key on the item's
+            record.  `get_state()`/`set_state()` work against it, so a
+            generic action like `StateToggle` only needs this declaration to
+            touch state.
+
+    Subclassing notes:
+        `handle(instance, interaction, request)` is the one required method.
+        An action instance is shared by every use of its interaction class,
+        so actions must stay stateless - any per-player variation belongs in
+        `instance.item_state`, reached through the interaction passed in.
     """
 
-    __slots__ = ("name", "label", "show", "can", "handle", "description")
+    name = None
+    label = None
+    description = ""
+    state_key = None
 
-    def __init__(
-        self, name, label=None, show=None, can=None, handle=None, description=""
-    ):
+    def __init__(self, name, label=None, description=""):
         self.name = name
         self.label = label
-        self.show = show
-        self.can = can
-        self.handle = handle
         self.description = description
 
     @property
@@ -239,29 +271,176 @@ class Action:
         """The button text for this action: its label, or one derived from its name."""
         return self.label or self.name.replace("_", " ").title()
 
+    def can(self, instance, interaction):
+        """Whether this action is currently available, judged by its own data.
+
+        Args:
+            instance: the player-scoped record the interaction is happening
+                on, or None for assets with none (an Exit).
+            interaction: the bound `InteractiveItem`, for access to the
+                player, options and asset.
+
+        Returns:
+            True if the action may be taken.  The default allows everything.
+
+        The interaction's `can` is the authoritative gate - it sees the whole
+        context (where the item is, what the player has, what the player
+        knows) - and both gates are enforced.  Override here only for what an
+        action can judge about itself from its own declared data, such as a
+        toggle that only means anything when its key exists.
+        """
+        return True
+
+    def handle(self, instance, interaction, request):
+        """Perform this action.
+
+        Args:
+            instance: the player-scoped record for this player.
+            interaction: the bound `InteractiveItem`.
+            request: the current `HttpRequest`.
+
+        Returns:
+            None to have the framework re-render the panel with the new
+            state, a string to send that text back to the player, or an
+            `HttpResponse` (such as `HtmxTriggerResponse`) to return it as-is.
+
+        Raises:
+            NotImplementedError: if the action does not implement the
+                behaviour.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} '{self.name}' has no behaviour. "
+            "Subclass Action and implement handle()."
+        )
+
+    def get_state(self, instance, default=None):
+        """Read `state_key` from the player's record, or `default` if unset.
+
+        The player's record is the LocationItem/InventoryItem the interaction
+        is happening on - per-player state has no other home.
+        """
+        return self._state(instance).get(self.state_key, default)
+
+    def set_state(self, instance, value):
+        """Write `value` to `state_key` on the player's record."""
+        self._state(instance).put(self.state_key, value)
+
+    def _state(self, instance):
+        """The player's record's state, with a useful error when unusable."""
+        if self.state_key is None:
+            raise TypeError(
+                f"{type(self).__name__} '{self.name}' declares no state_key; "
+                "read and write instance.item_state directly."
+            )
+        if instance is None:
+            raise TypeError(
+                f"{type(self).__name__} '{self.name}' needs the player's "
+                "record (LocationItem/InventoryItem) to touch state; "
+                "targets with no record are stateless or write PC state."
+            )
+        return instance.item_state
+
     def __repr__(self):
         return f"Action({self.name!r}, label={self.label!r})"
+
+
+class StateToggle(Action):
+    """Flip a boolean stored under `state_key` on the player's record.
+
+    The first press turns the key True (from its default False); each press
+    after flips it.  `on_message`/`off_message` are logged to the player, or
+    leave them empty for a silent action.
+
+    Usage:
+        actions = [StateToggle("power", state_key="pushed",
+                               label="Push button",
+                               on_message="On", off_message="Off")]
+    """
+
+    state_key = None
+    on_message = ""
+    off_message = ""
+
+    def __init__(
+        self,
+        name,
+        label=None,
+        description="",
+        *,
+        state_key=None,
+        on_message="",
+        off_message="",
+    ):
+        super().__init__(name, label, description)
+        # Constructor kwargs override the class defaults, so the same generic
+        # can be configured differently on each line of an action list.
+        self.state_key = state_key if state_key is not None else self.state_key
+        self.on_message = on_message if on_message else self.on_message
+        self.off_message = off_message if off_message else self.off_message
+
+    def handle(self, instance, interaction, request):
+        on = not self.get_state(instance, default=False)
+        self.set_state(instance, on)
+        return (self.on_message if on else self.off_message) or None
+
+
+class SetState(Action):
+    """Set `state_key` on the player's record to a fixed `value`.
+
+    `message` is logged to the player; leave it empty for a silent action.
+
+    Usage:
+        actions = [SetState("unlock", state_key="unlocked", value=True,
+                            message="The lock clicks open.")]
+    """
+
+    state_key = None
+    value = None
+    message = ""
+
+    def __init__(
+        self,
+        name,
+        label=None,
+        description="",
+        *,
+        state_key=None,
+        value=None,
+        message="",
+    ):
+        super().__init__(name, label, description)
+        self.state_key = state_key if state_key is not None else self.state_key
+        self.value = value if value is not None else self.value
+        self.message = message if message else self.message
+
+    def handle(self, instance, interaction, request):
+        self.set_state(instance, self.value)
+        return self.message or None
 
 
 class InteractiveItem:
     """Base class for the behaviour of an interactive asset.
 
-    Subclasses declare their `actions` and override `can`, `show` and `handle`.
-    They are not Django models and they hold no state: an instance is built per
-    request, and per-player data belongs in the `item_state` of the
-    `LocationItem`/`InventoryItem` passed in as `instance`.
+    Subclasses declare their `actions` (each an `Action` - a framework
+    generic or a subclass of its own) and override `can` for judgement.  The
+    effect of each action lives on the `Action` itself.  Instances of this
+    class are built per request and hold no state; per-player data belongs in
+    the `item_state` of the `LocationItem`/`InventoryItem` passed in as
+    `instance`.
 
     Attributes:
-        show_partial: Default template partial for every action that does not
-            set its own `show`.  Actions that need no UI can leave this None.
-        labels: Optional name -> label overrides, for classes that would
-            rather not build `Action` objects by hand.
+        partial: Template partial (`"app/template.jinja2#fragment"`) for the
+            interaction's panel - the one thing that is shown whenever the
+            item's detail renders.  Defaults to the framework's list of
+            buttons, one per available action.  A class with an interface of
+            its own overrides this with the path of its own partial; an
+            interaction with no actions at all still has a panel (the default
+            renders "No actions available", useful for a status readout).
         actions: The declared `Action` list, or None if `get_actions()` is
             overridden to compute it.
     """
 
-    show_partial = None
-    labels = {}
+    partial = "nilpoint/action_panel.jinja2#action_list"
     actions = ()
 
     def __init__(self, item, instance=None, pc=None):
@@ -293,8 +472,7 @@ class InteractiveItem:
         """Return the `Action` list this interaction offers.
 
         Override to compute actions from `self.options` or the bound instance.
-        The default returns the `actions` class attribute, with any entries
-        given as bare names in `labels` promoted to `Action` objects.
+        The default returns a copy of the `actions` class attribute.
         """
         return list(self.actions)
 
@@ -308,14 +486,16 @@ class InteractiveItem:
     def available_actions(self, instance=None):
         """Return the `Action` list the player can currently take.
 
-        This is what the UI renders buttons for.  Actions whose `can` gate
-        refuses them are left out.
+        This is what the UI renders buttons for.  An action is offered only
+        when the interaction's `can` gate *and* the action's own `can` gate
+        both allow it.  A gate that raises hides the button rather than
+        taking the panel down.
         """
         instance = instance if instance is not None else self.instance
         available = []
         for action in self.get_actions():
             try:
-                allowed = self.can(instance, action)
+                allowed = self.can(instance, action) and action.can(instance, self)
             except Exception:
                 # A broken gate must not take the whole panel down.
                 allowed = False
@@ -332,58 +512,22 @@ class InteractiveItem:
             action: the `Action` being tested.
 
         Returns:
-            True if the action may be taken.  The default defers to a `can`
-            callable attached to the action, and otherwise allows it.
+            True if the action may be taken.  The default allows everything.
 
-        Note:
-            Override this to gate several actions at once.  Overriding it
-            means `can` callables attached to individual actions are ignored.
+        This is the authoritative gate: it sees the whole context - where the
+        item is (`instance.is_in_inventory`), what the player has
+        (`interaction.pc.inventory_items()`), what the player knows
+        (`interaction.pc.item_state`), and the item's own options.  Override
+        it for judgement; the effect of the action lives on the `Action`.
+        The view and `available_actions()` also honour the action's own `can`.
         """
-        if action.can is not None:
-            return bool(action.can(instance))
         return True
 
-    def show(self, instance, action):
-        """Return the template partial to render for `action`.
+    def get_context(self, instance):
+        """Extra template context for the interaction's panel.
 
-        Returns:
-            A `"app/template.jinja2#fragment"` string, or None if the action
-            has no UI of its own.  The default uses the action's `show`, then
-            the class's `show_partial`.
-        """
-        if action.show:
-            return action.show
-        return self.show_partial
-
-    def handle(self, instance, action, request):
-        """Perform `action`.
-
-        Args:
-            instance: the player-scoped record for this player.
-            action: the `Action` to perform.
-            request: the current `HttpRequest`.
-
-        Returns:
-            None to have the framework re-render `show()` with the new state,
-            a string to send that text back to the player, or an
-            `HttpResponse` (such as `HtmxTriggerResponse`) to return it as-is.
-
-        Raises:
-            NotImplementedError: if neither the action nor the class
-                implements the behaviour.
-        """
-        if action.handle is not None:
-            return action.handle(instance, request)
-        raise NotImplementedError(
-            f"{type(self).__name__} has no behaviour for action '{action.name}'. "
-            f"Implement handle() or attach a callable to the Action."
-        )
-
-    def get_context(self, instance, action):
-        """Extra template context for `show()` renders.
-
-        Return a dict to be merged into the context the framework passes to the
-        partial.  `instance`, `item`, `action`, `state`, `pc` and
+        Return a dict to be merged into the context the framework passes to
+        the partial.  `instance`, `item`, `asset`, `state`, `pc` and
         `interaction` are always present; this is for anything else a partial
         needs.
         """
@@ -403,13 +547,18 @@ class InteractiveItem:
         """Summarise this interaction for admin display.
 
         Returns:
-            A list of dicts with `name`, `label` and `show` per action.
+            A list of dicts with `name`, `label`, `class`, `state_key` and
+            `partial` per action.  `class` names the implementing `Action`
+            subclass, so a framework generic is distinguishable from a game's
+            one-off.
         """
         return [
             {
                 "name": action.name,
                 "label": action.display_label,
-                "show": action.show or self.show_partial,
+                "class": type(action).__name__,
+                "state_key": action.state_key,
+                "partial": self.partial or None,
             }
             for action in self.get_actions()
         ]

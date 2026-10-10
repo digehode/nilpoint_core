@@ -6,8 +6,8 @@
         {% for action in actions %}
             <button type="button"
                     class="nilpoint-interact-action {{ classes }}"
-                    hx-post="{{ game.get_dispatch_url }}?action=interact"
-                    hx-vals='{"target_type": "{{ action.target_type }}", "object_id": {{ action.object_id }}, "action": "{{ action.name }}", "phase": "{{ action.show_phase }}"}'
+                    hx-get="{{ game.get_dispatch_url }}?action=interact"
+                    hx-vals='{"target_type": "{{ action.target_type }}", "object_id": {{ action.object_id }}, "action_name": "{{ action.name }}"}'
                     {% if action.target %}hx-target="{{ action.target }}"{% else %}hx-target="#nilpoint-interaction-panel"{% endif %}
                     {% if action.swap %}hx-swap="{{ action.swap }}"{% endif %}>{{ action.label }}</button>
         {% endfor %}

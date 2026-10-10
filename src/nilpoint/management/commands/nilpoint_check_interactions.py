@@ -94,9 +94,14 @@ class Command(BaseCommand):
                 if show_actions:
                     described = interaction_class(objects[0]).describe()
                     for action in described:
+                        detail = f"({action['class']}"
+                        if action["state_key"]:
+                            detail += f", state_key={action['state_key']}"
+                        detail += ")"
                         self.stdout.write(
                             f"         - {action['name']}: {action['label']}"
-                            f" -> {action['show'] or '(no partial)'}"
+                            f" {detail}"
+                            f" -> {action['partial'] or '(no partial)'}"
                         )
 
             if unused is not None:

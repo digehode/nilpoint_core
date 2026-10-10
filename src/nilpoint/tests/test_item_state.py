@@ -326,6 +326,66 @@ class StatefulMixinTests(TestCase):
         self.assertTrue(issubclass(models.InventoryItem, models.StatefulMixin))
 
 
+class PlayerCharacterStateTests(TestCase):
+    """PlayerCharacter carries its own state (for PC-locus interactions)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="test", password="pw")
+        self.player = models.Player.objects.create(user=self.user)
+        self.game = models.Game.objects.create(
+            instance_name="Test Game",
+            instance_description="",
+            nilpoint_slug="test-game",
+            allow_multiple_characters=False,
+        )
+        self.pc = models.PlayerCharacter.objects.create(
+            handle="hero", player=self.player, game=self.game
+        )
+
+    def test_player_character_has_item_state(self):
+        self.assertTrue(hasattr(self.pc, "item_state"))
+        self.pc.item_state.put("phase", "intro")
+        self.assertEqual(self.pc.item_state.get("phase"), "intro")
+
+    def test_player_character_state_is_persistent(self):
+        self.pc.item_state.put("visited", ["alley"])
+        fresh = models.PlayerCharacter.objects.get(id=self.pc.id)
+        self.assertEqual(fresh.item_state.get("visited"), ["alley"])
+
+    def test_state_content_type_is_the_root_of_the_chain(self):
+        """An archetype subclass and the base it inherits from key to one row."""
+        try:
+            from cypherpunk.models import CypherpunkPC
+        except ImportError:
+            self.skipTest("cypherpunk app not installed")
+
+        self.assertEqual(
+            models.state_content_type(CypherpunkPC).model_class(),
+            models.PlayerCharacter,
+        )
+
+    def test_archetype_subclass_and_base_fetch_share_state(self):
+        """The view fetches a character with get_subclass() (a game's
+        CypherpunkPC) while `instance.pc` hands out the plain PlayerCharacter;
+        both must see one state row, not two."""
+        try:
+            from cypherpunk.models import CypherpunkPC
+        except ImportError:
+            self.skipTest("cypherpunk app not installed")
+
+        pc = CypherpunkPC.objects.create(
+            handle="cypher", player=self.player, game=self.game
+        )
+        pc.item_state.put("phase", "intro")
+
+        via_base = models.PlayerCharacter.objects.get(id=pc.id)
+        self.assertEqual(via_base.item_state.get("phase"), "intro")
+
+        via_base.item_state.put("phase", "case")
+        fresh = models.PlayerCharacter.objects.get_subclass(id=pc.id)
+        self.assertEqual(fresh.item_state.get("phase"), "case")
+
+
 class TransferStateFunctionTests(TestCase):
     """Tests for the standalone transfer_item_state function."""
 

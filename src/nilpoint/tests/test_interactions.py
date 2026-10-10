@@ -1,7 +1,8 @@
 """Tests for the InteractiveItem system.
 
 Two layers are covered: the interaction classes in isolation (no HTTP, no view
-plumbing) and the dispatch view that runs their phases for a request.
+plumbing) and the dispatch view that shows the panel and runs actions for a
+request.
 """
 
 from uuid import uuid4
@@ -15,15 +16,24 @@ from nilpoint.exceptions import UnresolvableInteraction
 from nilpoint.interactions import (
     Action,
     InteractiveItem,
+    SetState,
+    StateToggle,
     get_interaction,
     get_interaction_asset,
     holder_type,
 )
 from nilpoint.models import Player, PlayerCharacter
-from nilpoint.templatetags.nilpoint_tags import nilpoint_interact_actions
+from nilpoint.templatetags.nilpoint_tags import (
+    nilpoint_interact_actions,
+    nilpoint_interaction_panel,
+)
 from nilpoint.tests.test_interaction_fixtures import (
+    ClosedGate,
     CountingInteraction,
+    GateKeeperInteraction,
+    InterfaceOnlyInteraction,
     MessyActionInteraction,
+    SimplePushInteraction,
     SqueezeWotsit,
     WotsitLever,
 )
@@ -38,7 +48,7 @@ User = get_user_model()
 
 
 class ActionTests(TestCase):
-    """Action is a plain declaration, so it needs no database."""
+    """Action declarations are plain data, so they need no database."""
 
     def test_display_label_derived_from_name(self):
         self.assertEqual(Action("push_button").display_label, "Push Button")
@@ -50,6 +60,91 @@ class ActionTests(TestCase):
 
     def test_repr_names_the_action(self):
         self.assertIn("push_button", repr(Action("push_button", label="Push it")))
+
+    def test_base_action_has_no_behaviour(self):
+        """A plain Action is a declaration; its handle refuses to run."""
+        with self.assertRaises(NotImplementedError) as ctx:
+            Action("twist").handle(None, None, None)
+        self.assertIn("twist", str(ctx.exception))
+
+    def test_base_gates_allow_everything(self):
+        self.assertTrue(Action("anything").can(None, None))
+
+
+class StatefulActionTests(TestCase):
+    """Generic actions work against a player's copy of an item."""
+
+    def setUp(self):
+        self.game = models.Game.objects.create(
+            instance_name="Test Game",
+            instance_description="",
+            nilpoint_slug=f"g_{uuid4().hex[:6]}",
+        )
+        self.item = models.Item.objects.create(
+            asset_id="wotsit", name="A Wotsit", description="", game=self.game
+        )
+        self.user = User.objects.create_user(
+            username=f"u_{uuid4().hex[:6]}", password="pw"
+        )
+        self.pc = PlayerCharacter.objects.create(
+            handle="hero", player=Player.objects.create(user=self.user), game=self.game
+        )
+        self.record = models.InventoryItem.objects.create(pc=self.pc, item=self.item)
+
+    def test_state_helpers_read_and_write_the_declared_key(self):
+        action = StateToggle("power", state_key="pushed")
+        self.assertIsNone(action.get_state(self.record))
+        self.assertEqual(action.get_state(self.record, default=False), False)
+
+        action.set_state(self.record, True)
+        self.assertEqual(action.get_state(self.record), True)
+
+    def test_state_helpers_require_a_state_key(self):
+        with self.assertRaises(TypeError):
+            Action("vague").get_state(self.record)
+        with self.assertRaises(TypeError):
+            Action("vague").set_state(self.record, True)
+
+    def test_state_helpers_require_a_player_record(self):
+        action = StateToggle("power", state_key="pushed")
+        with self.assertRaises(TypeError):
+            action.get_state(None)
+
+    def test_state_toggle_flips_a_boolean(self):
+        action = StateToggle("power", state_key="pushed")
+        self.assertFalse(action.get_state(self.record, default=False))
+
+        action.handle(self.record, None, None)
+        self.assertTrue(self.record.item_state.get("pushed"))
+
+        action.handle(self.record, None, None)
+        self.assertFalse(self.record.item_state.get("pushed"))
+
+    def test_state_toggle_messages_follow_the_flip(self):
+        on = StateToggle(
+            "power",
+            state_key="pushed",
+            on_message="On",
+            off_message="Off",
+        )
+        self.assertEqual(on.handle(self.record, None, None), "On")
+        self.assertEqual(on.handle(self.record, None, None), "Off")
+
+    def test_state_toggle_without_messages_is_silent(self):
+        action = StateToggle("power", state_key="pushed")
+        self.assertIsNone(action.handle(self.record, None, None))
+
+    def test_set_state_pins_a_value(self):
+        action = SetState(
+            "unlock", state_key="unlocked", value=True, message="Unlocked!"
+        )
+        self.assertEqual(action.handle(self.record, None, None), "Unlocked!")
+        self.assertTrue(self.record.item_state.get("unlocked"))
+
+    def test_set_state_without_a_message_is_silent(self):
+        action = SetState("go", state_key="go", value=True)
+        self.assertIsNone(action.handle(self.record, None, None))
+        self.assertTrue(self.record.item_state.get("go"))
 
 
 class InteractiveItemTests(TestCase):
@@ -140,10 +235,10 @@ class InteractiveItemTests(TestCase):
 
     def test_handle_without_behaviour_raises(self):
         interaction = self._lever_item()
-        interaction.actions = [Action("twist")]
+        action = interaction.get_action("pull")
         with self.assertRaises(NotImplementedError) as ctx:
-            interaction.handle(None, Action("twist"), None)
-        self.assertIn("twist", str(ctx.exception))
+            action.handle(None, interaction, None)
+        self.assertIn("pull", str(ctx.exception))
 
     def test_describe_lists_actions(self):
         self.item.interaction = WotsitLever.dotted_path()
@@ -156,6 +251,14 @@ class InteractiveItemTests(TestCase):
         self.assertEqual(described["actions"], ["pull"])
         self.assertEqual(described["labels"], {"pull": "Pull"})
 
+    def test_describe_names_the_implementing_action_class(self):
+        """describe() tells a framework generic from a game's one-off."""
+        self.item.interaction = SqueezeWotsit.dotted_path()
+        self.item.save()
+        described = self.item.get_interaction().describe()
+        self.assertEqual(described[0]["class"], "Squeeze")
+        self.assertEqual(described[0]["state_key"], None)
+
     def test_module_defined_action(self):
         """A class can build its action list however it likes, including
         reading the asset's options."""
@@ -167,16 +270,16 @@ class InteractiveItemTests(TestCase):
         self.assertEqual([a.name for a in actions], ["whack"])
         self.assertEqual(actions[0].display_label, "Whack")
 
-    def test_action_level_can_and_handle_callables(self):
-        """The short form: behaviour attached to a single Action, with no
-        handle() or can() method on the class at all."""
+    def test_action_handle_runs_against_the_right_interaction(self):
+        """Behaviour lives on the Action; the tap count proves what ran."""
         self.item.interaction = CountingInteraction.dotted_path()
         self.item.save()
         interaction = self.item.get_interaction()
 
-        self.assertTrue(interaction.can(None, interaction.get_action("tap")))
+        action = interaction.get_action("tap")
+        self.assertTrue(interaction.can(None, action))
 
-        interaction.get_action("tap").handle(None, None)
+        action.handle(None, interaction, None)
         self.assertEqual(interaction.taps, 1)
 
     def test_available_actions_filters_by_can(self):
@@ -185,6 +288,12 @@ class InteractiveItemTests(TestCase):
         self.assertEqual(
             [a.name for a in interaction.available_actions(None)], ["pull"]
         )
+
+    def test_available_actions_honours_the_actions_own_gate(self):
+        """`available_actions` ANDs the interaction gate and the action gate."""
+        interaction = self._lever_item()
+        interaction.actions = [ClosedGate("press")]
+        self.assertEqual(interaction.available_actions(None), [])
 
     def test_available_actions_survives_a_broken_gate(self):
         """A `can` that raises must hide the button, not take the page down."""
@@ -195,6 +304,43 @@ class InteractiveItemTests(TestCase):
 
         interaction.can = explode
         self.assertEqual(interaction.available_actions(None), [])
+
+    def test_partial_defaults_to_the_actions_panel(self):
+        """The framework's buttons panel is the default partial."""
+        self.item.interaction = SimplePushInteraction.dotted_path()
+        self.item.save()
+        self.assertEqual(
+            self.item.get_interaction().partial,
+            "nilpoint/action_panel.jinja2#action_list",
+        )
+
+    def test_partial_can_point_at_a_custom_template(self):
+        """A class with an interface of its own overrides `partial`."""
+        self.item.interaction = SqueezeWotsit.dotted_path()
+        self.item.save()
+        self.assertEqual(
+            self.item.get_interaction().partial,
+            "nilpoint/test_interact_show.jinja2#test",
+        )
+
+    def _start(self):
+        """Return a Location for the tests that need a LocationItem."""
+        return models.Location.objects.create(
+            asset_id=f"start_{uuid4().hex[:6]}",
+            name="Start",
+            description="",
+            game=self.game,
+            initial=True,
+        )
+
+    def _pc(self):
+        """A fresh player character for this game."""
+        user = User.objects.create_user(username=f"u_{uuid4().hex[:6]}", password="pw")
+        return PlayerCharacter.objects.create(
+            handle="hero",
+            player=Player.objects.create(user=user),
+            game=self.game,
+        )
 
 
 class InteractionLookupTests(TestCase):
@@ -318,15 +464,15 @@ class InteractActionsTagTests(TestCase):
         self.location_item.item_state.put("charges", 3)
         content = self._render(self.location_item)
         self.assertIn("Squeeze", content)
-        self.assertIn('"action": "squeeze"', content)
-        self.assertIn('"phase": "show"', content)
+        self.assertIn('"action_name": "squeeze"', content)
         self.assertIn('"target_type": "location_item"', content)
+        self.assertNotIn('"phase"', content)
 
     def test_omits_actions_the_can_rule_refuses(self):
         self.location_item.item_state.put("charges", 0)
         content = self._render(self.location_item)
         self.assertIn("No actions available", content)
-        self.assertNotIn('"action": "squeeze"', content)
+        self.assertNotIn('"action_name": "squeeze"', content)
 
     def test_renders_nothing_for_an_item_with_no_interaction(self):
         plain = models.Item.objects.create(
@@ -347,6 +493,55 @@ class InteractActionsTagTests(TestCase):
     def test_without_a_game_in_context_renders_nothing(self):
         result = nilpoint_interact_actions({}, self.location_item)
         self.assertEqual(result["actions"], [])
+
+    def _render_panel(self, instance):
+        request = self.factory.get("/")
+        request.user = self.user
+        return render_to_string(
+            "nilpoint/tags/interaction_panel.jinja2",
+            nilpoint_interaction_panel({"game": self.game}, instance),
+        )
+
+    def test_panel_auto_loads_for_an_interaction_with_a_custom_partial(self):
+        """A class with its own partial renders a div that loads it via htmx."""
+        content = self._render_panel(self.location_item)
+        self.assertIn('id="nilpoint-interaction-panel"', content)
+        self.assertIn('hx-trigger="load"', content)
+        # The div must target itself explicitly: inside the page container
+        # (hx-target="this") an inherited target would resolve "this" to the
+        # container and swap the whole landing.
+        self.assertIn('hx-target="this"', content)
+        self.assertIn("action=interact", content)
+        self.assertIn('"target_type": "location_item"', content)
+        self.assertNotIn('"phase"', content)
+        # The panel loads empty: partial, buttons and all come from the
+        # interact view, not from the detail render.
+        self.assertNotIn("nilpoint-interact-action", content)
+
+    def test_panel_auto_loads_for_an_interaction_with_the_default_partial(self):
+        """Every interaction auto-loads the same way, custom partial or not."""
+        self.item.interaction = SimplePushInteraction.dotted_path()
+        self.item.save()
+        content = self._render_panel(self.location_item)
+        self.assertIn('id="nilpoint-interaction-panel"', content)
+        self.assertIn('hx-trigger="load"', content)
+        self.assertIn('hx-target="this"', content)
+        self.assertNotIn("Push", content)
+        self.assertNotIn('"phase"', content)
+
+    def test_panel_renders_nothing_for_an_item_with_no_interaction(self):
+        plain = models.Item.objects.create(
+            asset_id="plain", name="Plain", description="", game=self.game
+        )
+        plain_location_item = models.LocationItem.objects.create(
+            location=self.location, pc=self.pc, item=plain
+        )
+        content = self._render_panel(plain_location_item)
+        self.assertEqual(content.strip(), "")
+
+    def test_panel_without_a_game_in_context_renders_nothing(self):
+        result = nilpoint_interaction_panel({}, self.location_item)
+        self.assertEqual(result["mode"], "none")
 
 
 class InteractionTargetResolutionTests(TestCase):
@@ -381,7 +576,7 @@ class InteractionTargetResolutionTests(TestCase):
 
 
 class InteractionDispatchTests(TestCase):
-    """The `interact` action running each phase against a real class."""
+    """The `interact` action showing a panel and running actions against a real class."""
 
     def setUp(self):
         self.user = User.objects.create_user(
@@ -415,17 +610,15 @@ class InteractionDispatchTests(TestCase):
         self.location_item.item_state.put("charges", 3)
         self.factory = RequestFactory()
 
-    def _dispatch(self, instance, action, phase, **extra):
-        request = self.factory.post(
-            "/dispatch?action=interact",
-            {
-                "target_type": holder_type(instance),
-                "object_id": instance.pk,
-                "action": action,
-                "phase": phase,
-                **extra,
-            },
-        )
+    def _dispatch(self, instance, action=None, method="post", **extra):
+        data = {
+            "target_type": holder_type(instance),
+            "object_id": instance.pk,
+            **extra,
+        }
+        if action is not None:
+            data["action_name"] = action
+        request = getattr(self.factory, method)("/dispatch?action=interact", data)
         request.user = self.user
         request.COOKIES["pc"] = str(self.pc.id)
 
@@ -436,74 +629,101 @@ class InteractionDispatchTests(TestCase):
         view.player_character = self.pc
         return view.handle_interact(request)
 
-    def test_can_phase_allows(self):
-        response = self._dispatch(self.location_item, "squeeze", "can")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('"allowed": true', response.content.decode())
+    def _render_item_detail(self, **params):
+        """Render the item detail view; defaults to self.location_item."""
+        request = self.factory.get(
+            "/dispatch?action=item_detail",
+            params or {"location_item": str(self.location_item.pk)},
+        )
+        request.user = self.user
+        request.COOKIES["pc"] = str(self.pc.id)
 
-    def test_can_phase_refuses(self):
-        self.location_item.item_state.put("charges", 0)
-        response = self._dispatch(self.location_item, "squeeze", "can")
-        self.assertIn('"allowed": false', response.content.decode())
+        view = NilpointGameBasic()
+        view.setup(request)
+        view.game = self.game
+        view.player = self.player
+        view.player_character = self.pc
+        return view.handle_item_detail(request).content.decode()
 
-    def test_show_phase_renders_the_partial(self):
-        response = self._dispatch(self.location_item, "squeeze", "show")
+    def test_bare_request_renders_the_panel(self):
+        """No action_name: the interaction's partial renders, nothing runs."""
+        response = self._dispatch(self.location_item)
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn("SHOW PARTIAL RENDERED", content)
-        # The partial gets the stable context keys to work with.
-        self.assertIn("squeeze", content)
+        # The panel gets the stable context keys to work with.
         self.assertIn("A Wotsit", content)
-        self.assertIn("handle", content)
         self.assertIn("hero", content)
+        # Showing the panel is not an action: nothing changed state.
+        self.location_item.refresh_from_db()
+        self.assertEqual(self.location_item.item_state.get("charges"), 3)
 
-    def test_handle_phase_changes_state_and_rerenders(self):
-        response = self._dispatch(self.location_item, "squeeze", "handle")
+    def test_action_changes_state_and_rerenders(self):
+        response = self._dispatch(self.location_item, "squeeze")
         self.assertEqual(response.status_code, 200)
         self.location_item.refresh_from_db()
         self.assertEqual(self.location_item.item_state.get("charges"), 2)
         self.assertIn(b"SHOW PARTIAL RENDERED", response.content)
 
-    def test_handle_phase_is_gated_by_can(self):
+    def test_action_is_gated_by_can(self):
         """A request that bypasses the buttons must still be refused."""
         self.location_item.item_state.put("charges", 0)
-        response = self._dispatch(self.location_item, "squeeze", "handle")
+        response = self._dispatch(self.location_item, "squeeze")
         self.assertIn(b"Can't squeeze", response.content)
         self.location_item.refresh_from_db()
         self.assertEqual(self.location_item.item_state.get("charges"), 0)
 
-    def test_handle_phase_returns_a_string_response_verbatim(self):
+    def test_action_logs_a_returned_string_and_rerenders(self):
+        """A string returned from handle is logged, not swapped over the UI."""
         self.item.interaction = StringResponseInteraction.dotted_path()
         self.item.save()
-        response = self._dispatch(self.location_item, "shout", "handle")
-        self.assertIn(b"the device whirs", response.content)
+        response = self._dispatch(self.location_item, "shout")
+        # The interaction UI re-renders in place...
+        self.assertIn(b"SHOW PARTIAL RENDERED", response.content)
+        # ...and the returned string reaches the player via the log.
+        self.assertEqual(
+            response._log, [{"message": "the device whirs", "level": "success"}]
+        )
 
-    def test_handle_phase_honours_a_returned_response(self):
+    def test_actions_own_gate_is_enforced_by_dispatch(self):
+        """A request that bypasses the buttons must not slip past the action's
+        own `can` either: both gates gate the dispatch."""
+        self.item.interaction = GateKeeperInteraction.dotted_path()
+        self.item.save()
+        panel = self._dispatch(self.location_item)
+        self.assertNotIn(b"Press", panel.content)
+
+        response = self._dispatch(self.location_item, "press")
+        self.assertIn(b"Can't press", response.content)
+        self.location_item.refresh_from_db()
+        self.assertIsNone(self.location_item.item_state.get("pressed"))
+
+    def test_action_logs_a_returned_response_text(self):
+        """An HttpResponse from handle is logged, not swapped over the UI."""
         self.item.interaction = ResponseReturningInteraction.dotted_path()
         self.item.save()
-        response = self._dispatch(self.location_item, "ping", "handle")
+        response = self._dispatch(self.location_item, "ping")
         self.assertIsInstance(response, HtmxTriggerResponse)
-        self.assertEqual(response.content, b"pong")
-        # The action's own trigger survives, rather than being replaced by the
-        # framework's default refresh.
+        # The interaction UI re-renders in place instead of the response text...
+        self.assertIn(b"ping", response.content)
+        # ...the returned text is logged rather than replacing the panel...
+        self.assertEqual(response._log, [{"message": "pong", "level": "success"}])
+        # ...and the action's own trigger survives, so it can still refresh
+        # other panels.
         self.assertIn("player_location_changed", response.htmx_triggers)
 
     def test_unknown_action_is_refused(self):
-        response = self._dispatch(self.location_item, "explode", "handle")
+        response = self._dispatch(self.location_item, "explode")
         self.assertIn(b"has no action 'explode'", response.content)
 
     def test_item_with_no_interaction_is_refused(self):
         self.item.interaction = ""
         self.item.save()
-        response = self._dispatch(self.location_item, "squeeze", "handle")
+        response = self._dispatch(self.location_item, "squeeze")
         self.assertIn(b"has no interactions", response.content)
 
-    def test_invalid_phase_is_refused(self):
-        response = self._dispatch(self.location_item, "squeeze", "wiggle")
-        self.assertIn(b"Invalid phase", response.content)
-
     def test_missing_parameters_are_refused(self):
-        request = self.factory.post("/dispatch?action=interact", {"phase": "show"})
+        request = self.factory.post("/dispatch?action=interact", {})
         request.user = self.user
         request.COOKIES["pc"] = str(self.pc.id)
         view = NilpointGameBasic()
@@ -528,13 +748,13 @@ class InteractionDispatchTests(TestCase):
         theirs = models.LocationItem.objects.create(
             location=self.location, pc=other_pc, item=self.item
         )
-        response = self._dispatch(theirs, "squeeze", "handle")
+        response = self._dispatch(theirs, "squeeze")
         self.assertIn(b"Not found or not yours", response.content)
 
     def test_our_own_copy_of_the_same_item_still_works(self):
         """The mirror of the test above: ownership filtering must not stop a
         character interacting with their own copy of a shared Item."""
-        response = self._dispatch(self.location_item, "squeeze", "handle")
+        response = self._dispatch(self.location_item, "squeeze")
         self.assertNotIn(b"Not found", response.content)
         self.location_item.refresh_from_db()
         self.assertEqual(self.location_item.item_state.get("charges"), 2)
@@ -558,8 +778,7 @@ class InteractionDispatchTests(TestCase):
                 "object_id": models.LocationItem.objects.create(
                     location=self.location, pc=self.pc, item=foreign
                 ).pk,
-                "action": "squeeze",
-                "phase": "handle",
+                "action_name": "squeeze",
             },
         )
         request.user = self.user
@@ -572,27 +791,141 @@ class InteractionDispatchTests(TestCase):
         response = view.handle_interact(request)
         self.assertIn(b"not part of this game", response.content)
 
+    def test_bare_request_renders_the_default_buttons_panel(self):
+        """A class with no partial of its own gets the default buttons panel."""
+        self.item.interaction = SimplePushInteraction.dotted_path()
+        self.item.save()
+        response = self._dispatch(self.location_item)
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Push", content)
+        self.assertIn('"action_name": "push"', content)
+        self.assertNotIn('"phase"', content)
 
-class StringResponseInteraction(InteractiveItem):
-    """handle() returns a string, which the view sends back verbatim."""
+    def test_panel_request_via_get_renders_the_partial(self):
+        """The item detail auto-load uses GET, so a bare GET must work."""
+        response = self._dispatch(self.location_item, method="get")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"SHOW PARTIAL RENDERED", response.content)
 
-    show_partial = "nilpoint/test_interact_show.jinja2#test"
-    actions = [Action("shout")]
+    def test_zero_action_interaction_renders_its_status_panel(self):
+        """An interaction with a partial but no actions still loads."""
+        self.item.interaction = InterfaceOnlyInteraction.dotted_path()
+        self.item.save()
+        response = self._dispatch(self.location_item)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"STATUS SHOW RENDERED", response.content)
+        self.assertIn(b"A Wotsit", response.content)
 
-    def handle(self, instance, action, request):
+    def test_action_rerenders_the_default_buttons_panel(self):
+        """An acted action re-renders the panel in place, not a bare OK."""
+        self.item.interaction = SimplePushInteraction.dotted_path()
+        self.item.save()
+        response = self._dispatch(self.location_item, "push")
+        self.assertEqual(response.status_code, 200)
+        self.location_item.refresh_from_db()
+        self.assertTrue(self.location_item.item_state.get("pushed"))
+        self.assertIn(b"Push", response.content)
+        self.assertNotIn("player_location_changed", response.htmx_triggers)
+
+    def test_item_detail_auto_loads_for_an_interaction_with_a_custom_partial(self):
+        """The detail of a custom item carries a load-triggered panel."""
+        content = self._render_item_detail()
+        self.assertIn('hx-trigger="load"', content)
+        self.assertIn("action=interact", content)
+        self.assertIn('"target_type": "location_item"', content)
+        self.assertNotIn('"phase"', content)
+        self.assertNotIn("nilpoint-interact-action", content)
+
+    def test_item_detail_auto_loads_for_an_interaction_with_the_default_partial(self):
+        """The detail of an interaction without its own partial loads the same way."""
+        self.item.interaction = SimplePushInteraction.dotted_path()
+        self.item.save()
+        content = self._render_item_detail()
+        self.assertIn('hx-trigger="load"', content)
+        self.assertNotIn("Push", content)
+        self.assertNotIn("nilpoint-interact-action", content)
+
+    def test_item_detail_renders_no_actions_area_for_a_plain_item(self):
+        """A non-interactive item has no interaction region to load."""
+        self.item.interaction = ""
+        self.item.save()
+        content = self._render_item_detail()
+        self.assertNotIn("nilpoint-interaction-panel", content)
+        self.assertNotIn("No actions available", content)
+
+    def test_item_detail_is_self_refreshing(self):
+        """The detail region re-requests itself when items move or the player
+        moves, so it never shows a stale record."""
+        content = self._render_item_detail()
+        self.assertIn("A Wotsit", content)
+        self.assertIn(
+            f"action=item_detail&amp;location_item={self.location_item.pk}", content
+        )
+        self.assertIn('hx-target="this"', content)
+        self.assertIn('hx-swap="outerHTML"', content)
+        for event in (
+            "inventory_items_changed",
+            "location_items_changed",
+            "player_location_changed",
+            "player_character_changed",
+        ):
+            self.assertIn(event, content)
+
+    def test_item_detail_blanks_when_the_record_is_gone(self):
+        """A take/drop deletes the record; the refresh must blank, not error."""
+        content = self._render_item_detail(location_item="999999")
+        self.assertEqual(content.strip(), "")
+
+    def test_item_detail_blanks_when_the_item_is_no_longer_at_the_location(self):
+        """Walking away makes an examined location item inaccessible."""
+        elsewhere = models.Location.objects.create(
+            asset_id="elsewhere", name="Elsewhere", description="", game=self.game
+        )
+        self.location_item.location = elsewhere
+        self.location_item.save()
+        self.assertEqual(self._render_item_detail().strip(), "")
+
+    def test_inventory_item_detail_is_always_accessible(self):
+        """An item the character carries stays examinable wherever they are."""
+        self.location_item.delete()
+        inventory_item = models.InventoryItem.objects.create(pc=self.pc, item=self.item)
+        content = self._render_item_detail(inventory_item=str(inventory_item.pk))
+        self.assertIn("A Wotsit", content)
+
+
+class Shout(Action):
+    """Shout at the wotsit; the resulting string is logged to the player."""
+
+    def handle(self, instance, interaction, request):
         instance.item_state.put("shouted", True)
         return "the device whirs"
 
 
-class ResponseReturningInteraction(InteractiveItem):
-    """handle() returns a response, which the view uses as-is."""
+class StringResponseInteraction(InteractiveItem):
+    """An action whose handle returns a string, which the view logs.
 
-    actions = [Action("ping")]
+    The effect lives on `Shout`; the interaction is only the declaration and
+    the panel.
+    """
 
-    def handle(self, instance, action, request):
+    partial = "nilpoint/test_interact_show.jinja2#test"
+    actions = [Shout("shout")]
+
+
+class Ping(Action):
+    """Return a response; its text is logged and its triggers kept."""
+
+    def handle(self, instance, interaction, request):
         response = HtmxTriggerResponse(content="pong", content_type="text/plain")
         response.add_trigger("player_location_changed")
         return response
+
+
+class ResponseReturningInteraction(InteractiveItem):
+    """An action whose handle returns a response: text logged, triggers kept."""
+
+    actions = [Ping("ping")]
 
 
 class CheckInteractionsCommandTests(TestCase):

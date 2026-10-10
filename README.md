@@ -90,53 +90,80 @@ New stateful models inherit `StatefulMixin` and automatically get `item_state` p
 ### Item interactions
 
 An item can be made interactive by naming an `InteractiveItem` subclass in its
-`interaction` field. That class owns everything the player can do with the
-item: the action list, which actions are currently available, the partial
-rendered for each one, and what happens when an action is chosen. Nothing
-about a specific item's behaviour lives in core or in the `Game` subclass any
-more.
+`interaction` field. That class owns the judgement and identity of the
+interaction: the action list, which actions are currently available (`can`),
+the panel shown for the interaction, and the extra context it needs. The
+*effect* of each action lives on the `Action` itself (`handle`). Nothing about
+a specific item's behaviour lives in core or in the `Game` subclass any more.
+
+Every interaction renders exactly one **panel** - its `partial` attribute -
+decided at class level so every action behaves the same way. The default
+partial is one stacked button per available action, a click each. A class with
+an interface of its own (a device panel, a status readout) sets `partial` to
+its own template, and the actions live inside that one partial. An interaction
+with no actions at all still has a panel (the default renders "No actions
+available"), which is how a status-only interaction shows its readout.
+
+The panel is **always shown**: the item detail renders the
+`nilpoint_interaction_panel` tag, which emits a div that auto-loads
+the partial into `#nilpoint-interaction-panel` via htmx. I've moved
+back and forth on how to do this but I think this is the best bet.
 
 Interaction classes are plain Python classes (not Django models); several
 items may share one class, and per-player state belongs in `item_state` (see
 `StatefulMixin`), just like the old hooks.
 
-**The three phases:**
+#### Hooks
 
-| Phase | Purpose | Returns |
-|-------|---------|---------|
-| `can` | Gate the action (check state, location, etc.) | `True`/`False` |
-| `show` | Render a partial for HTMX inclusion (e.g., a panel with action buttons) | Template path string (e.g., `"mygame/interact/squeeze.jinja2#show"`) |
-| `handle` | Execute the action when triggered | String message, `HtmxTriggerResponse`, or `None` |
+| Where | Method | Purpose | Default |
+|-------|--------|---------|---------|
+| Interaction | `can(instance, action)` | The authoritative gate: offer `action`? (state, inventory, location...) | allows everything |
+| Action | `can(instance, interaction)` | The action's own gate, for what it can judge about itself | allows everything |
+| Action | `handle(instance, interaction, request)` | Execute the action when triggered | raises `NotImplementedError` |
 
-The `can` gate is always enforced by the view before `handle` runs, not just by
-the buttons in the UI. A `handle` that returns a string sends that text to the
-player, one that returns an `HttpResponse` is used as-is (its triggers survive),
-and one that returns `None` re-renders the partial so the new state shows.
+Both `can` gates are enforced by the view before `handle` runs, not just by
+the buttons in the UI. After `handle` runs the interaction area always
+re-renders the panel, so an action never replaces the UI with its own output.
+The return value only contributes a message to the player log: a returned
+string appears as-is, the text content of a returned `HttpResponse` is logged
+(any triggers it set, e.g. panel refreshes, survive), and `None` means no
+message.
 
-**Define an interaction class:**
+A small library of generic `Action`s covers the common effects - `StateToggle`
+flips a boolean, `SetState` pins a key to a value - each configured by
+declaring a `state_key` and a message. Anything else is a small `Action`
+subclass next to the interaction that uses it.
+
+#### How to define an interaction class
 
 ```python
 # mygame/interactions.py
-from nilpoint.interactions import Action, InteractiveItem
+from nilpoint.interactions import InteractiveItem, SetState
 
 class Wotsit(InteractiveItem):
-    show_partial = "mygame/interact/wotsit.jinja2#show"
+    partial = "mygame/interact/wotsit.jinja2#show"
 
-    actions = [Action("squeeze", label="Squeeze")]
+    actions = [
+        SetState("squeeze", label="Squeeze", state_key="charges", value=2,
+                 message="Squeezed!"),
+    ]
 
     def can(self, instance, action):
         return instance.item_state.get("charges", 0) > 0
 
-    def handle(self, instance, action, request):
-        charges = instance.item_state.get("charges", 0)
-        instance.item_state.put("charges", charges - 1)
-        return f"Squeezed! Charges left: {charges - 1}"
+    def get_context(self, instance):
+        # Extra template context for the panel partial.
+        return {"charges": instance.item_state.get("charges", 0)}
 ```
 
 - `instance` is the `LocationItem`/`InventoryItem` the player is acting on
   (use `instance.item_state` for state, `instance.is_in_inventory` to ask where it is).
-- For a class with a single simple action, the behaviour can go straight on the
-  `Action`: `Action("read", label="Read it", handle=my_callable)`.
+- An action reads and writes its declared key with `self.get_state(instance)`
+  / `self.set_state(instance, value)`; hand-written actions reach the whole
+  picture through `interaction` (the `pc`, the item's `options`, the asset).
+- `partial` is a `"app/template.jinja2#fragment"` string. The default is the
+  framework's buttons panel; leave it alone for that. Inside a custom partial,
+  `{% nilpoint_interact_actions instance %}` renders the buttons.
 - `get_actions()` may be overridden to compute the action list from
   `self.options` (the item's `interaction_options` JsonField).
 
@@ -165,39 +192,57 @@ development rather than in play.
 **Dispatch from the client (HTMX):**
 
 The `handle_interact` view is registered as action `"interact"` in
-`NilpointGameBasic`. It runs the three phases via POST with parameters
-`target_type` (`location_item`, `inventory_item`, or any other interactive
-asset type), `object_id`, `action`, and `phase`.
+`NilpointGameBasic`. It accepts GET or POST with parameters `target_type`
+(`location_item`, `inventory_item`, or any other interactive asset type),
+`object_id`, and optionally `action_name`. The interaction action travels as
+`action_name` because `action` in the query string is the dispatch router's
+handler selector. A request with no `action_name` renders the panel - this is
+what the item detail auto-loads, and it is not an action. A request with an
+`action_name` is gated by `can` (both gates) and performed by the action's
+`handle`, then re-renders the panel. Interface loads are GET requests; an
+action that sends data (e.g. a code entry form) should POST it.
 
-```html
-<!-- Show phase: render action UI -->
-<button hx-post="{% nilpoint_action_url game 'interact' %}"
-        hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "show"}'
-        hx-target="#interaction-panel">
-  Squeeze
-</button>
-
-<!-- Handle phase: execute action -->
-<button hx-post="{% nilpoint_action_url game 'interact' %}"
-        hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}, "action": "squeeze", "phase": "handle"}'
-        hx-target="#messages">
-  Squeeze!
-</button>
-```
-
-**Template tag for rendering available actions:**
+Most games never write interact requests by hand: the item detail renders the
+whole interaction region for you.
 
 ```jinja2
 {% load nilpoint_tags %}
 
-{# Renders a button per action that passes its "can" check, for any
-   interactive record (LocationItem, InventoryItem, or an interactive asset) #}
-{% nilpoint_interact_actions location_item target="#interaction-panel" %}
+{# The interaction panel: the interaction's `partial` auto-loads into
+   #nilpoint-interaction-panel via a GET request (no action named) when the
+   detail renders. #}
+{% nilpoint_interaction_panel instance %}
+```
+
+Inside a custom interface partial, render the action buttons with:
+
+```jinja2
+{% nilpoint_interact_actions instance %}
+```
+
+The default `partial` does exactly this. Hand-written requests follow the same
+shape:
+
+```html
+<!-- Panel load (GET, no action_name): show the interaction -->
+<a hx-get="{% nilpoint_action_url game 'interact' %}"
+   hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}}'
+   hx-target="#nilpoint-interaction-panel">
+  Open
+</a>
+
+<!-- Perform an action (POST): sending data, e.g. a code from a form field -->
+<button hx-post="{% nilpoint_action_url game 'interact' %}"
+        hx-include="#code-form"
+        hx-vals='{"target_type": "location_item", "object_id": {{ li.id }}, "action_name": "enter_code"}'
+        hx-target="#nilpoint-interaction-panel">
+  Submit code
+</button>
 ```
 
 The `nilpoint_check_interactions` command also summarises configured
-interactions (`--actions` lists each class's actions; `--game <slug>` limits by
-game).
+interactions: `--actions` lists each class's actions and its partial,
+`--game <slug>` limits by game.
 
 ### Player log messages
 
@@ -248,6 +293,23 @@ The default styling in `nilpoint.css` is a green-on-black terminal; a game can
 restyle by overriding the same selectors, or hide the log entirely.
 
 ### Item take/drop mechanics
+
+`handle_take_item` / `handle_drop_item` move an item by deleting the old
+record and creating a fresh one in the new home, so the record's id does not
+survive a move. Both responses trigger `inventory_items_changed` and
+`location_items_changed`; moving through an exit triggers
+`player_location_changed`.
+
+The panels listen to those events and refresh themselves, and so does the
+**item detail**: its `#nilpoint-item-detail` region re-requests the same
+record whenever items move or the player changes location or character, so an
+open detail never shows a stale copy. `handle_item_detail` is the gate — the
+region **blanks** when the record is gone, or when
+`_item_detail_is_accessible(instance, pc)` returns `False` (default: a
+`LocationItem` must be where the character is; an `InventoryItem` is always
+accessible). Override `_item_detail_is_accessible` on your view for your own
+rules — an item that evaporates, a container that locks, and so on.
+`item_detail_partial` names the content rendered inside that refresh wrapper.
 
 ## Game archetypes and model overrides
 
@@ -314,7 +376,7 @@ The core view's `_value_from_subclass_or_default(name, default)` method does the
 | `handle_get_player_location_panel` | `player_location_panel` | `nilpoint/player_location_panel.jinja2#player_location_panel` |
 | `handle_get_location_item_panel` | `location_item_panel` | `nilpoint/location_item_panel.jinja2#location_item_panel` |
 | `handle_get_inventory_panel` | `inventory_panel` | `nilpoint/inventory_item_panel.jinja2#inventory_panel` |
-| `handle_item_detail` | `item_detail_partial` | `nilpoint/location_item_panel.jinja2#item_detail` |
+| `handle_item_detail` | `item_detail_partial` (the content inside the refresh wrapper) | `nilpoint/item_detail_panel.jinja2#item_detail_content` |
 | `handle_new_player_character` | `new_player_character_partial` | `nilpoint/new_player_character.jinja2#new_player_character` |
 | `handle_new_player_character` | `new_player_character_submit` | auto-derived dispatch URL |
 
@@ -347,7 +409,8 @@ Nilpoint provides template tags in `nilpoint_tags` to simplify common HTMX patte
 | `nilpoint_panel` | HTMX panel div (GET) | `panel_id`, `action`, `triggers`, `target`, `swap` |
 | `nilpoint_action` | Action link/button | `text`, `action`, `method`, `target`, `swap`, `classes` |
 | `nilpoint_form` | Form (GET+POST) | `form_id`, `action`, `method`, `target`, `swap` |
-| `nilpoint_interact_actions` | One button per available interaction action | `instance`, `show_phase`, `target`, `swap`, `classes` |
+| `nilpoint_interact_actions` | One button per available interaction action (each a GET with the action name); the default interaction panel | `instance`, `target`, `swap`, `classes` |
+| `nilpoint_interaction_panel` | The item detail's interaction region: always auto-loads the interaction's `partial` | `instance` |
 
 All tags auto-generate the dispatch URL from the `game` in context.
 

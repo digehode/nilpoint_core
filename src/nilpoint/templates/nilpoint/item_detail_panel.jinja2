@@ -29,31 +29,37 @@
     {% endif %}
 {% endpartialdef %}
 {% partialdef item_detail %}
-    <div id="nilpoint-item-detail">
-        <div class="nilpoint-item-detail-graphic">
-            {% if item.graphic_safe %}
-                <img src="{% static item.graphic_safe %}"
-                     alt="{{ item.name }}"
-                     width="640"
-                     height="640">
+    {# The detail region refreshes itself when items move between the location and the inventory, or the player changes location or character. It re-requests the same record; the view blanks the region when that record is gone or no longer reachable. #}
+    <div id="nilpoint-item-detail"
+         hx-get="{{ item_detail_refresh_url }}"
+         hx-trigger="inventory_items_changed from:body, location_items_changed from:body, player_location_changed from:body, player_character_changed from:body"
+         hx-target="this"
+         hx-swap="outerHTML">{% include item_detail_content %}</div>
+{% endpartialdef %}
+{% partialdef item_detail_content %}
+    <div class="nilpoint-item-detail-graphic">
+        {% if item.graphic_safe %}
+            <img src="{% static item.graphic_safe %}"
+                 alt="{{ item.name }}"
+                 width="640"
+                 height="640">
+        {% endif %}
+    </div>
+    <div class="nilpoint-item-detail-text">
+        <h1>{{ item.name }}</h1>
+        <p>{{ item.description }}</p>
+        {# Interaction region: the interaction's partial always auto-loads into the panel div when the detail renders. #}
+        {% if instance %}
+            {% nilpoint_interaction_panel instance %}
+        {% endif %}
+        {% if debug %}
+            <h3>DEBUG</h3>
+            {% if state %}
+                <p>has state: {{ state }}</p>
+                <p>{{ state.keys }}</p>
+            {% elif instance %}
+                <p>state: {{ item_state_data }}</p>
             {% endif %}
-        </div>
-        <div class="nilpoint-item-detail-text">
-            <h1>{{ item.name }}</h1>
-            <p>{{ item.description }}</p>
-            {# Available interaction actions #}
-            {% if instance %}
-                <div class="nilpoint-item-actions">{% nilpoint_interact_actions instance target="#nilpoint-interaction-panel" %}</div>
-            {% endif %}
-            {% if debug %}
-                <h3>DEBUG</h3>
-                {% if state %}
-                    <p>has state: {{ state }}</p>
-                    <p>{{ state.keys }}</p>
-                {% elif instance %}
-                    <p>state: {{ item_state_data }}</p>
-                {% endif %}
-            {% endif %}
-        </div>
+        {% endif %}
     </div>
 {% endpartialdef %}

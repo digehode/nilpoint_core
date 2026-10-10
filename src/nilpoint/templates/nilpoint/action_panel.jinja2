@@ -1,0 +1,5 @@
+{% load nilpoint_tags %}
+{% partialdef action_list %}
+    {# The default interaction panel: one button per available action; the response swaps the re-rendered panel back in. #}
+    {% nilpoint_interact_actions instance %}
+{% endpartialdef %}

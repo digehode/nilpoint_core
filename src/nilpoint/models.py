@@ -417,7 +417,138 @@ class Exit(GameAsset):
         return (e1, e2)
 
 
-class PlayerCharacter(models.Model):
+class ItemStateProxy:
+    """Dict-like wrapper around ItemState.data (pickled dict)."""
+
+    def __init__(self, item_state):
+        self._state = item_state
+        self._data = pickle.loads(item_state.data) if item_state.data else {}
+
+    def _save(self):
+        self._state.data = pickle.dumps(self._data)
+        self._state.save(update_fields=["data"])
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def put(self, key, value):
+        self._data[key] = value
+        self._save()
+
+    def pop(self, key, default=None):
+        val = self._data.pop(key, default)
+        self._save()
+        return val
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def keys(self):
+        return self._data.keys()
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self.put(key, value)
+
+    def __delitem__(self, key):
+        self.pop(key)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"ItemStateProxy({self._data!r})"
+
+    def dumps(self):
+        return "|" + str(self._data) + "|"
+
+
+class ItemState(models.Model):
+    """Persistent state for any game object instance (LocationItem, InventoryItem, etc.).
+
+    Uses a GenericForeignKey to attach to any model. Data is stored as a pickled
+    Python dict, allowing flexible per-object schemas without migrations.
+    """
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    data = models.BinaryField(default=b"")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["content_type", "object_id"], name="unique_itemstate_per_object"
+            ),
+        ]
+
+
+def state_content_type(obj):
+    """The content type that owns an object's ItemState.
+
+    State is keyed to the root of a model's inheritance chain, so one row
+    serves the same record no matter how it was fetched - the base
+    `PlayerCharacter` or the concrete `CypherpunkPC` subclass a game installs
+    as its archetype point at the same row.  For plain models (LocationItem,
+    InventoryItem) the root is the model itself, which is what existing rows
+    are keyed to.
+    """
+    model = obj if isinstance(obj, type) else type(obj)
+    while model._meta.parents:
+        model = next(iter(model._meta.parents))
+    return ContentType.objects.get_for_model(model)
+
+
+class StatefulMixin(models.Model):
+    """Mixin providing dict-like state via ItemState.
+
+    Any model inheriting from this gets an `item_state` property that returns
+    a dict-like proxy for storing arbitrary per-instance state.
+
+    Usage:
+        class MyModel(StatefulMixin, models.Model):
+            ...
+
+        obj = MyModel.objects.create(...)
+        obj.item_state.put("key", "value")
+        val = obj.item_state.get("key")
+    """
+
+    states = GenericRelation(ItemState, related_query_name="%(class)s_states")
+
+    class Meta:
+        abstract = True
+
+    @property
+    def item_state(self):
+        """Get or create ItemState, return dict-like proxy."""
+        state, _ = ItemState.objects.get_or_create(
+            content_type=state_content_type(self),
+            object_id=self.pk,
+            defaults={"data": pickle.dumps({})},
+        )
+        return ItemStateProxy(state)
+
+    def transfer_state_to(self, other):
+        """Copy state to another instance of the same or different model."""
+        from_state = (
+            self.item_state._state
+        )  # The underlying ItemState, creating if needed
+        to_state = other.item_state._state
+        to_state.data = from_state.data
+        to_state.save(update_fields=["data"])
+
+
+class PlayerCharacter(StatefulMixin, models.Model):
     """Represents a player for a given game
 
     Refers to the generic Player and through that to a user.
@@ -427,6 +558,10 @@ class PlayerCharacter(models.Model):
     Can be sub-classed for specific instances, but the goal is to keep
     this fairly generic and use foreign-keys in game-specific
     models/views/etc. to refer to the character.
+
+    Inherits `StatefulMixin`, so a character carries its own `item_state`.
+    State is keyed to `PlayerCharacter` itself (the root of the inheritance
+    chain), so a game's concrete subclass of this model shares the row.
 
     """
 
@@ -536,117 +671,6 @@ class PlayerScopedManager(models.Manager):
     def for_character(self, pc):
         """Return only the rows belonging to the given PlayerCharacter."""
         return self.get_queryset().filter(pc=pc)
-
-
-class ItemStateProxy:
-    """Dict-like wrapper around ItemState.data (pickled dict)."""
-
-    def __init__(self, item_state):
-        self._state = item_state
-        self._data = pickle.loads(item_state.data) if item_state.data else {}
-
-    def _save(self):
-        self._state.data = pickle.dumps(self._data)
-        self._state.save(update_fields=["data"])
-
-    def get(self, key, default=None):
-        return self._data.get(key, default)
-
-    def put(self, key, value):
-        self._data[key] = value
-        self._save()
-
-    def pop(self, key, default=None):
-        val = self._data.pop(key, default)
-        self._save()
-        return val
-
-    def __contains__(self, key):
-        return key in self._data
-
-    def keys(self):
-        return self._data.keys()
-
-    def __getitem__(self, key):
-        return self._data[key]
-
-    def __setitem__(self, key, value):
-        self.put(key, value)
-
-    def __delitem__(self, key):
-        self.pop(key)
-
-    def __iter__(self):
-        return iter(self._data)
-
-    def __len__(self):
-        return len(self._data)
-
-    def __repr__(self):
-        return f"ItemStateProxy({self._data!r})"
-
-    def dumps(self):
-        return "|" + str(self._data) + "|"
-
-
-class ItemState(models.Model):
-    """Persistent state for any game object instance (LocationItem, InventoryItem, etc.).
-
-    Uses a GenericForeignKey to attach to any model. Data is stored as a pickled
-    Python dict, allowing flexible per-object schemas without migrations.
-    """
-
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
-    content_object = GenericForeignKey("content_type", "object_id")
-
-    data = models.BinaryField(default=b"")
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["content_type", "object_id"]),
-        ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["content_type", "object_id"], name="unique_itemstate_per_object"
-            ),
-        ]
-
-
-class StatefulMixin(models.Model):
-    """Mixin providing dict-like state via ItemState.
-
-    Any model inheriting from this gets an `item_state` property that returns
-    a dict-like proxy for storing arbitrary per-instance state.
-
-    Usage:
-        class MyModel(StatefulMixin, models.Model):
-            ...
-
-        obj = MyModel.objects.create(...)
-        obj.item_state.put("key", "value")
-        val = obj.item_state.get("key")
-    """
-
-    states = GenericRelation(ItemState, related_query_name="%(class)s_states")
-
-    class Meta:
-        abstract = True
-
-    @property
-    def item_state(self):
-        """Get or create ItemState, return dict-like proxy."""
-        state, _ = self.states.get_or_create(defaults={"data": pickle.dumps({})})
-        return ItemStateProxy(state)
-
-    def transfer_state_to(self, other):
-        """Copy state to another instance of the same or different model."""
-        from_state = (
-            self.item_state._state
-        )  # Get the underlying ItemState, creating if needed
-        to_state, _ = other.states.get_or_create()
-        to_state.data = from_state.data
-        to_state.save(update_fields=["data"])
 
 
 def transfer_item_state(from_instance, to_instance):

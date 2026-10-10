@@ -1,0 +1,13 @@
+{# nilpoint/tags/interaction_panel.jinja2 #}
+{% load nilpoint_tags %}
+{% if mode == "load" %}
+    {# The interaction panel: rendered from the interaction's `partial` by the interact view (GET, no action named - showing the panel is not an action). #}
+    {# An explicit hx-target is required: without one the request inherits the nearest ancestor's hx-target (e.g. the page container's hx-target="this"), which resolves to that ancestor and swaps the whole landing. #}
+    <div id="nilpoint-interaction-panel"
+         hx-get="{{ game.get_dispatch_url }}?action=interact"
+         hx-vals='{{ hx_vars|safe }}'
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML"
+         aria-live="polite"></div>
+{% endif %}

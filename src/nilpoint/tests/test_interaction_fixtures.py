@@ -5,33 +5,45 @@ gives `test_interaction_fixtures` a real dotted path to exercise, since the
 resolver has to import a class from somewhere.
 """
 
-from nilpoint.interactions import Action, InteractiveItem
+from nilpoint.interactions import Action, InteractiveItem, StateToggle
 
 
 class WotsitLever(InteractiveItem):
-    """A single action with a label and a partial. The simplest useful case."""
+    """A single action with a label and its own panel partial."""
 
-    show_partial = "nilpoint/test_interact_show.jinja2#test"
+    partial = "nilpoint/test_interact_show.jinja2#test"
     actions = [Action("pull", label="Pull")]
 
 
+class Squeeze(Action):
+    """Use one charge of a wotsit: a hand-written action next to its interaction."""
+
+    def handle(self, instance, interaction, request):
+        charges = instance.item_state.get("charges", 0)
+        instance.item_state.put("charges", charges - 1)
+        return None
+
+
 class SqueezeWotsit(InteractiveItem):
-    """An action gated on per-player state, rendered by a core partial.
+    """An action gated on per-player state, rendered by a custom partial.
 
     This is the worked example used by the dispatch tests: squeezing uses up
     one of the wotsit's charges, so the action is only offered while charges
-    remain.
+    remain.  The interaction judges, the `Squeeze` action does.
     """
 
-    show_partial = "nilpoint/test_interact_show.jinja2#test"
-    actions = [Action("squeeze", label="Squeeze")]
+    partial = "nilpoint/test_interact_show.jinja2#test"
+    actions = [Squeeze("squeeze", label="Squeeze")]
 
     def can(self, instance, action):
         return instance.item_state.get("charges", 0) > 0
 
-    def handle(self, instance, action, request):
-        charges = instance.item_state.get("charges", 0)
-        instance.item_state.put("charges", charges - 1)
+
+class Poke(Action):
+    """A hand-written action that works even against a bare asset."""
+
+    def handle(self, instance, interaction, request):
+        instance.item_state.put("poked", True)
         return None
 
 
@@ -42,41 +54,80 @@ class MessyActionInteraction(InteractiveItem):
     can drive its action list.
     """
 
-    show_partial = "nilpoint/test_interact_show.jinja2#test"
+    partial = "nilpoint/test_interact_show.jinja2#test"
 
     def get_actions(self):
-        return [Action(self.options.get("verb", "poke"))]
+        return [Poke(self.options.get("verb", "poke"))]
 
     def can(self, instance, action):
         return True
 
-    def handle(self, instance, action, request):
+
+class CountingAction(Action):
+    """Count the taps made against the interaction that owns it."""
+
+    def handle(self, instance, interaction, request):
+        interaction.taps += 1
         return None
 
 
 class CountingInteraction(InteractiveItem):
-    """Puts its behaviour on the Action, so the class overrides no methods.
+    """A one-action interaction whose behaviour lives on the action.
 
-    A one-action interaction needs no `can()` or `handle()` at all. The count
-    lives on the interaction instance so a test can prove the callable that ran
-    was the one attached to the Action.
+    The count lives on the interaction instance so a test can prove the
+    action's `handle` is what ran, against the right interaction.
     """
 
-    show_partial = "nilpoint/test_interact_show.jinja2#test"
+    partial = "nilpoint/test_interact_show.jinja2#test"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.taps = 0
 
     def get_actions(self):
-        return [
-            Action(
-                "tap",
-                label="Tap",
-                can=lambda instance: True,
-                handle=lambda instance, request: self._tap(),
-            )
-        ]
+        return [CountingAction("tap", label="Tap")]
 
-    def _tap(self):
-        self.taps += 1
+    def can(self, instance, action):
+        return True
+
+
+class SimplePushInteraction(InteractiveItem):
+    """A bare interaction: no partial of its own.
+
+    This is the default path: its panel is the framework's list of buttons,
+    one per available action, a click each.  The push is a framework generic
+    (`StateToggle`), so the class itself only declares it.
+    """
+
+    actions = [StateToggle("push", label="Push", state_key="pushed")]
+
+
+class ClosedGate(Action):
+    """An action that refuses itself, to prove both `can` gates are honoured."""
+
+    def can(self, instance, interaction):
+        return False
+
+    def handle(self, instance, interaction, request):
+        instance.item_state.put("pressed", True)
+        return None
+
+
+class GateKeeperInteraction(InteractiveItem):
+    """The interaction allows everything; only the action's own gate refuses."""
+
+    actions = [ClosedGate("press", label="Press")]
+
+
+class NoActionsInteraction(InteractiveItem):
+    """Declares no actions and no partial: the default panel shows nothing to do."""
+
+
+class InterfaceOnlyInteraction(InteractiveItem):
+    """No actions, but a partial: shows status or computed data only.
+
+    The panel loads with no action named, so it never needs to know about an
+    action to render.
+    """
+
+    partial = "nilpoint/test_interact_status_show.jinja2#status"

@@ -7,7 +7,10 @@ Provides tags to simplify common HTMX patterns in templates:
 - nilpoint_action: Render an action link/button with correct HTTP method
 - nilpoint_form: Render a form that GETs on load, POSTs on submit
 - nilpoint_interact_actions: Render a button per available interaction action
+- nilpoint_interaction_panel: Render the item detail interaction region
 """
+
+import json
 
 from django import template
 from django.urls import NoReverseMatch
@@ -240,7 +243,6 @@ def nilpoint_form(
 def nilpoint_interact_actions(
     context,
     instance,
-    show_phase="show",
     target=None,
     swap="innerHTML",
     classes="",
@@ -252,17 +254,21 @@ def nilpoint_interact_actions(
     so this works for anything interactive - a LocationItem, an
     InventoryItem, an Exit - without the template needing to know which.
 
+    This is the default interaction panel: one button per available action,
+    each a GET with the action name (an action that sends data - a code, a
+    choice - should be a POST form the game author writes in the interface
+    partial, not one of these buttons).  An interaction with no actions
+    renders "No actions available".
+
     Usage:
-        {% nilpoint_interact_actions location_item %}
+        {% nilpoint_interact_actions instance %}
         {% nilpoint_interact_actions inventory_item target="#panel" %}
 
     Args:
         instance: The record the player is interacting with (LocationItem,
             InventoryItem, or an interactive asset)
-        show_phase: Phase to request when a button is clicked (default
-            "show", which opens the action's partial)
-        target: hx-target selector for the partial (optional)
-        swap: hx-swap for the partial (default "innerHTML")
+        target: hx-target selector for the response (optional)
+        swap: hx-swap for the response (default "innerHTML")
         classes: Additional CSS classes for the buttons
 
     Returns:
@@ -284,7 +290,7 @@ def nilpoint_interact_actions(
         interaction = get_interaction(instance)
     except UnresolvableInteraction:
         # A misconfigured interaction shouldn't take the page down; the
-        # nilpoint_check command reports the underlying problem.
+        # nilpoint_check_interactions command reports the underlying problem.
         return empty
 
     if interaction is None:
@@ -296,7 +302,6 @@ def nilpoint_interact_actions(
             "label": action.display_label,
             "target_type": target_type,
             "object_id": instance.pk,
-            "show_phase": show_phase,
             "target": target,
             "swap": swap,
         }
@@ -312,4 +317,50 @@ def nilpoint_interact_actions(
         "swap": swap,
         "classes": classes,
         "game": game,
+    }
+
+
+@register.inclusion_tag("nilpoint/tags/interaction_panel.jinja2", takes_context=True)
+def nilpoint_interaction_panel(context, instance):
+    """
+    Render the item detail's interaction region.
+
+    Any item with an interaction renders a div that auto-loads the
+    interaction's panel (`interaction.partial`) into place via htmx (GET, no
+    action named - showing the panel is not an action).  Items with no
+    interaction render nothing.
+
+    Usage (in the item detail partial):
+        {% nilpoint_interaction_panel instance %}
+
+    Args:
+        instance: The record the player is looking at (LocationItem,
+            InventoryItem, or an interactive asset).
+
+    Returns:
+        Context for nilpoint/tags/interaction_panel.jinja2.
+    """
+    empty = {"mode": "none"}
+    game = context.get("game")
+    if game is None:
+        return empty
+
+    try:
+        interaction = get_interaction(instance)
+    except UnresolvableInteraction:
+        return empty
+
+    if interaction is None:
+        return empty
+
+    return {
+        "mode": "load",
+        "instance": instance,
+        "game": game,
+        "hx_vars": json.dumps(
+            {
+                "target_type": holder_type(instance),
+                "object_id": instance.pk,
+            }
+        ),
     }

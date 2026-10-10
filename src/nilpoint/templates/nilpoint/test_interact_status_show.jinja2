@@ -1,0 +1,8 @@
+{% load static i18n %}
+{% partialdef status %}
+    {# Rendered by InterfaceOnlyInteraction: a panel with no actions, which shows status or computed data only and is loaded with no action named. #}
+    <div class="test-interact-status-show">
+        <span data-test="status-show">STATUS SHOW RENDERED</span>
+        <span data-test="item">{{ item.name }}</span>
+    </div>
+{% endpartialdef %}
