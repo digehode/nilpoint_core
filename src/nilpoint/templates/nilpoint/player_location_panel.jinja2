@@ -9,11 +9,12 @@
             </div>
             <div id="nilpoint-exits-column">
                 <h1>Exits</h1>
-                <p>
+                <p><ul>
                     {% for e in player_character.current_location.exits.all %}
-                        {% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}
-                    {% empty %} None
-                    {% endfor %}
+                       <li> {% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}</li>
+                    {% empty %} <li>None</li>
+                  {% endfor %}
+		  </ul>
                 </p>
             </div>
         {% else %}

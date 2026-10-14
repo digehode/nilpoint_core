@@ -396,7 +396,7 @@ class Exit(GameAsset):
         """
         if location1.game != location2.game:
             raise ValueError(
-                "Trying to make an exit between locations in different game instances"
+                f"Trying to make an exit between locations in different game instances: ID {location1.game.id} != ID {location2.game.id}"
             )
         e1 = Exit(
             name=name1,
