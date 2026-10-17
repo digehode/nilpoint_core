@@ -288,8 +288,15 @@ class Game(models.Model):
         """
         # Direct targeted lookup if model_class is specified
         if model_class:
-            return model_class.objects.select_subclasses().get(
-                game=self, asset_id=asset_id
+            asset = (
+                model_class.objects.select_subclasses()
+                .filter(game=self, asset_id=asset_id)
+                .first()
+            )
+            if asset:
+                return asset
+            raise models.ObjectDoesNotExist(
+                f"Asset of type {model_class} with asset_id '{asset_id}' not found for game '{self}'."
             )
 
         # Dynamic lookup across all GameAsset subclasses
@@ -304,7 +311,7 @@ class Game(models.Model):
                     return asset
 
         raise models.ObjectDoesNotExist(
-            f"Asset with asset_id '{asset_id}' not found for game '{self.name}'."
+            f"Asset with asset_id '{asset_id}' not found for game '{self}'."
         )
 
 

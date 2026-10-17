@@ -67,12 +67,21 @@ class TestAssets(TestCase):
         self.assertNotEqual(asset_a.pk, asset_b.pk)
 
     def test_nonexistent_asset_raises_object_does_not_exist(self):
-        """Requesting an unassigned asset_id should raise ObjectDoesNotExist."""
-        with self.assertRaises(ObjectDoesNotExist):
-            self.game_a.get_asset("non_existent_id", model_class=Location)
+        """A miss raises ObjectDoesNotExist - exactly the base class, either branch.
 
-        with self.assertRaises(ObjectDoesNotExist):
-            self.game_a.get_asset("non_existent_id")
+        Not a model-specific `DoesNotExist`: callers only ever need
+        `except ObjectDoesNotExist`, which is what makes the release-step
+        check-then-create pattern work uniformly for both lookups. The
+        message names the asset and the game instance, so a failed update
+        says what was missing and where.
+        """
+        for model_class in (Location, None):  # targeted lookup, then dynamic
+            with self.assertRaises(ObjectDoesNotExist) as cm:
+                self.game_a.get_asset("non_existent_id", model_class)
+
+            self.assertIs(type(cm.exception), ObjectDoesNotExist)
+            self.assertIn("non_existent_id", str(cm.exception))
+            self.assertIn(self.game_a.instance_name, str(cm.exception))
 
     def test_unique_constraint_per_game(self):
         """Duplicate asset_ids within the same model and game should fail database constraints."""
