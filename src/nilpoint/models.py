@@ -394,9 +394,9 @@ class Exit(GameAsset):
 
         Creates two exits, each with it's own "name" which the user sees and uses asset_id_prefix to create the asset IDs, one with _A appended, one with _B
         """
-        if location1.game != location2.game:
+        if location1.game.id != location2.game.id:
             raise ValueError(
-                f"Trying to make an exit between locations in different game instances: ID {location1.game.id} != ID {location2.game.id}"
+                f"Trying to make an exit between locations in different game instances: {type(location1.game)} ID {location1.game.id} != {type(location2.game)} ID {location2.game.id}"
             )
         e1 = Exit(
             name=name1,
