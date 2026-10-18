@@ -665,11 +665,35 @@ class InteractionDispatchTests(TestCase):
         self.assertEqual(self.location_item.item_state.get("charges"), 2)
         self.assertIn(b"SHOW PARTIAL RENDERED", response.content)
 
+    def test_action_response_tells_the_item_detail_to_refresh(self):
+        """The detail shows the state an action changes (its debug display),
+        so a performed action fires `item_state_changed` and the region
+        re-requests itself instead of the player refreshing by hand."""
+        response = self._dispatch(self.location_item, "squeeze")
+        self.assertIn("item_state_changed", response.htmx_triggers)
+
+    def test_panel_load_does_not_tell_the_item_detail_to_refresh(self):
+        """Showing the panel changes nothing - and firing there would loop,
+        because the detail's refresh re-renders the panel's load trigger."""
+        response = self._dispatch(self.location_item)
+        self.assertNotIn("item_state_changed", response.htmx_triggers)
+
+    def test_a_failed_action_still_tells_the_item_detail_to_refresh(self):
+        """`handle` ran before it raised, so state may have half-changed:
+        the refresh fires the same as a success."""
+        self.item.interaction = NoHandleInteraction.dotted_path()
+        self.item.save()
+        response = self._dispatch(self.location_item, "poke")
+        self.assertIn(b"Error in handle", response.content)
+        self.assertIn("item_state_changed", response.htmx_triggers)
+
     def test_action_is_gated_by_can(self):
         """A request that bypasses the buttons must still be refused."""
         self.location_item.item_state.put("charges", 0)
         response = self._dispatch(self.location_item, "squeeze")
         self.assertIn(b"Can't squeeze", response.content)
+        # A refusal changed nothing, so it does not ask the detail to refresh.
+        self.assertNotIn("item_state_changed", response.htmx_triggers)
         self.location_item.refresh_from_db()
         self.assertEqual(self.location_item.item_state.get("charges"), 0)
 
@@ -869,6 +893,7 @@ class InteractionDispatchTests(TestCase):
             "location_items_changed",
             "player_location_changed",
             "player_character_changed",
+            "item_state_changed",
         ):
             self.assertIn(event, content)
 
@@ -926,6 +951,12 @@ class ResponseReturningInteraction(InteractiveItem):
     """An action whose handle returns a response: text logged, triggers kept."""
 
     actions = [Ping("ping")]
+
+
+class NoHandleInteraction(InteractiveItem):
+    """An action that never implements `handle`; the view contains the error."""
+
+    actions = [Action("poke")]
 
 
 class CheckInteractionsCommandTests(TestCase):

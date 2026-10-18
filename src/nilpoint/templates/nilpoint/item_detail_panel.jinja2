@@ -29,10 +29,10 @@
     {% endif %}
 {% endpartialdef %}
 {% partialdef item_detail %}
-    {# The detail region refreshes itself when items move between the location and the inventory, or the player changes location or character. It re-requests the same record; the view blanks the region when that record is gone or no longer reachable. #}
+    {# The detail region refreshes itself when items move between the location and the inventory, the player changes location or character, or a performed interaction action fires `item_state_changed`. It re-requests the same record; the view blanks the region when that record is gone or no longer reachable. #}
     <div id="nilpoint-item-detail"
          hx-get="{{ item_detail_refresh_url }}"
-         hx-trigger="inventory_items_changed from:body, location_items_changed from:body, player_location_changed from:body, player_character_changed from:body"
+         hx-trigger="inventory_items_changed from:body, location_items_changed from:body, player_location_changed from:body, player_character_changed from:body, item_state_changed from:body"
          hx-target="this"
          hx-swap="outerHTML">{% include item_detail_content %}</div>
 {% endpartialdef %}

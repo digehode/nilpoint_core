@@ -1,6 +1,7 @@
 import types
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 
 from nilpoint.decorators import release_step
 from nilpoint import exceptions
@@ -123,6 +124,62 @@ class UpdateMechanismTests(TestCase):
             self.game.update_release()
         g = models.Game.objects.get(pk=self.game.pk)
         self.assertEqual(g.release, 0)
+
+    def test_failed_step_leaves_partial_state_and_can_be_rerun(self):
+        """A failed step commits as it goes; rerunning finds its work.
+
+        The update command runs outside a transaction, so a step that
+        fails partway leaves its earlier writes committed with the
+        release unbumped. The check-then-create pattern steps use must
+        find that partial state on the rerun instead of duplicating it.
+        """
+
+        def step1(self):
+            # Check-then-create, as game release steps are expected to
+            # write them: safe to run again after a partial failure.
+            try:
+                self.get_asset("WIDGET")
+            except ObjectDoesNotExist:
+                models.Item.objects.create(
+                    asset_id="WIDGET",
+                    name="Widget",
+                    description="A test widget",
+                    game=self,
+                )
+            # The step also depends on an asset it doesn't create itself;
+            # the first run fails here.
+            self.get_asset("MISSING")
+
+        self.add_game_step(1, step1)
+
+        with self.assertRaises(exceptions.MigrationFailedError) as cm:
+            self.game.update_release()
+        self.assertIsInstance(cm.exception.__cause__, ObjectDoesNotExist)
+        self.assertIn("MISSING", str(cm.exception.__cause__))
+
+        # Nothing was rolled back: the partial write is committed and
+        # the release is still 0, so the step is due on the next run.
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.release, 0)
+        self.assertEqual(
+            models.Item.objects.filter(game=self.game, asset_id="WIDGET").count(), 1
+        )
+
+        # Fixing the data and rerunning finds the earlier work instead
+        # of duplicating it, and the step completes.
+        models.Location.objects.create(
+            asset_id="MISSING",
+            name="Missing",
+            description="The missing dependency",
+            game=self.game,
+        )
+        self.game.update_release()
+
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.release, 1)
+        self.assertEqual(
+            models.Item.objects.filter(game=self.game, asset_id="WIDGET").count(), 1
+        )
 
     def test__get_migration_map_discovers_decorated_methods(self):
         def step1(self):

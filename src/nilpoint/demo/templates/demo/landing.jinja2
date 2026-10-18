@@ -1,0 +1,37 @@
+{% load static i18n %}
+{% load nilpoint_tags %}
+{% partialdef landing %}
+    {# The demo's landing page, set via `landing_partial = "demo/landing.jinja2#landing"` on DemoGameView. It mirrors nilpoint's default landing (without the debug deck panel) and adds a line of orientation. Each nilpoint_panel loads via GET on the named action and re-loads when its `triggers` events fire from the body (take/drop, moving, character changes), so the whole page stays live without any game-side JavaScript. #}
+    <div id="nilpoint-game-container">
+        <h1>You are playing {{ game.instance_name }}</h1>
+        <p class="demo-intro">{{ game.instance_description }}</p>
+        {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
+        {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body" %}
+        {% nilpoint_panel "nilpoint-controls" "get_player_location_panel" triggers="load, player_character_changed from:body, player_location_changed from:body" %}
+        {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
+        {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
+        <div id="nilpoint-item-detail-panel"></div>
+        <div id="nilpoint-log" aria-live="polite"></div>
+        <script>
+          if (!window.__nilpointLog) {
+            window.__nilpointLog = true;          // landing partial re-renders; avoid duplicate listeners
+            htmx.on("nilpoint_log", function (event) {
+              var messages = event.detail.messages;
+              if (!Array.isArray(messages)) {
+                return;                           // unexpected shape; nothing to display
+              }
+              messages.forEach(function (item) {
+                var entry = document.createElement("div");
+                entry.textContent = item.message || "";
+                entry.classList.add("nilpoint-log-entry");
+                if (item.level) {
+                  entry.classList.add(item.level);
+                }
+                document.getElementById("nilpoint-log").appendChild(entry);
+              });
+            });
+          }
+        </script>
+    </div>
+    {# nilpoint-game-container #}
+{% endpartialdef %}

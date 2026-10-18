@@ -632,6 +632,14 @@ class NilpointGameBasic(View):
             returned `HttpResponse`, becomes the message; triggers set on a
             returned `HtmxTriggerResponse` are preserved; and returning None
             means no message.
+
+            A performed action also fires `item_state_changed`, so the item
+            detail - and anything else showing per-player state - re-requests
+            itself instead of keeping the pre-action copy.  Panel loads never
+            fire it: showing the panel changes nothing, and the detail's
+            refresh re-renders the panel's load trigger, so firing there
+            would loop.  A refused action fires nothing either - it changed
+            nothing.
         """
         target_type = request.POST.get("target_type", None) or request.GET.get(
             "target_type", None
@@ -721,9 +729,13 @@ class NilpointGameBasic(View):
             try:
                 result = action.handle(instance, interaction, request)
             except Exception as e:
-                return HtmxTriggerResponse(
+                response = HtmxTriggerResponse(
                     content=f"Error in handle: {e}", content_type="text/plain"
                 )
+                # `handle` ran, so it may have changed state before it
+                # failed: refresh what shows it, as a success does.
+                response.add_trigger("item_state_changed")
+                return response
 
             # The interaction panel is re-rendered after every action, so the
             # player always sees the interaction UI in its new state.  The
@@ -744,6 +756,13 @@ class NilpointGameBasic(View):
         partial = interaction.partial or "nilpoint/action_panel.jinja2#action_list"
         context = self._get_interaction_context(instance, asset, interaction)
         response = self.nilpoint_render(request, partial, context, *args, **kwargs)
+        if action is not None:
+            # `handle` ran, so per-player state may have changed: the item
+            # detail re-requests itself instead of keeping the pre-action
+            # copy.  A panel load has no action here, and must not fire this
+            # - the detail's refresh re-renders the panel's load trigger,
+            # which would loop.
+            response.add_trigger("item_state_changed")
         for trigger_name, trigger_data in action_triggers.items():
             response.add_trigger(trigger_name, trigger_data)
         if message:
@@ -838,10 +857,11 @@ class NilpointGameBasic(View):
         character and game instance.
 
         The detail is self-refreshing: it re-requests itself when items move
-        between the location and the inventory, or the player changes location
-        or character. A request for an instance that is gone, or that the
-        character can no longer reach, renders nothing, so the region blanks
-        rather than going stale.
+        between the location and the inventory, the player changes location
+        or character, or a performed interaction action fires
+        `item_state_changed`. A request for an instance that is gone, or that
+        the character can no longer reach, renders nothing, so the region
+        blanks rather than going stale.
 
         - Override item_detail_partial with the content rendered inside the
           detail's refresh wrapper.

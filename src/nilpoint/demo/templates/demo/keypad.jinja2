@@ -1,0 +1,25 @@
+{% load nilpoint_tags %}
+{% partialdef keypad %}
+    {# The keypad's panel, named by `Keypad.partial` ("demo/keypad.jinja2#keypad"). While locked it's a code-entry form: a plain hx-post to the same interact action with `action_name=unlock` plus the form's `code` field - `handle_interact` reads data from POST for actions that send it. The `can` gate runs in the view too, so a hand-crafted request can't unlock what `can` refuses. Once unlocked, `nilpoint_interact_actions` renders whichever buttons the interaction currently offers (here, re-locking). #}
+    <div class="keypad-interact">
+        {% if unlocked %}
+            <p class="keypad-display">The keypad light is green.</p>
+            {% nilpoint_interact_actions instance %}
+        {% else %}
+            <p class="keypad-display">The keypad light is red.</p>
+            <form class="keypad-form"
+                  hx-post="{{ game.get_dispatch_url }}?action=interact"
+                  hx-vals='{"target_type": "{{ target_type }}", "object_id": {{ instance.id }}, "action_name": "unlock"}'
+                  hx-target="#nilpoint-interaction-panel"
+                  hx-swap="innerHTML">
+                <label for="keypad-code">Code</label>
+                <input type="text"
+                       id="keypad-code"
+                       name="code"
+                       inputmode="numeric"
+                       autocomplete="off" />
+                <button type="submit">Enter</button>
+            </form>
+        {% endif %}
+    </div>
+{% endpartialdef %}

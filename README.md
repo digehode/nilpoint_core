@@ -7,13 +7,19 @@ subtitle: A Django engine for building adventure and narrative web games
 
 ## Introduction
 
-Nilpoint is an adventure game engine for Django. It allows the creation of games that involve exploration through multiple locations, an inventory and progression through conditions such as having collected an item, answered a riddle, etc.
+Nilpoint is an adventure game engine for Django. It allows the
+creation of games that involve exploration through multiple locations,
+an inventory and progression through conditions such as having
+collected an item, answered a riddle, etc.
 
-Most of Nilpoint can be subclassed to add game-specific functionality, and multiple games can be run on a single server.
+Most of Nilpoint can be subclassed to add game-specific functionality,
+and multiple games can be run on a single server.
 
-Games can be played by multiple people, each exploring their own version of the game world.
+Games can be played by multiple people, each exploring their own
+version of the game world.
 
-Nilpoint was created to enable the game "Cyperpunk", an adventure game of cryptography and cryptanalysis.
+Nilpoint was created to enable the game "Cyperpunk", an adventure game
+of cryptography and cryptanalysis.
 
 ## Overview -TODO
 
@@ -25,45 +31,90 @@ Nilpoint was created to enable the game "Cyperpunk", an adventure game of crypto
 
 ### Game
 
-A Game in Nilpoint is a class that ties together all objects, player characters, locations, etc.  Instances of each game object will be the same, but can have different players in different states of play.
+A Game in Nilpoint is a class that ties together all objects, player
+characters, locations, etc.  Instances of each game object will be the
+same, but can have different players in different states of play.
 
 Different kinds of game are created by subclassing the core Game object.
 
 ### Player
 
-A Player is an adapter from whatever user model your Django project is using to Nilpoint.  It doesn't currently do much other than sit between the user model and Nilpoint's models, but that may change in future.
+A Player is an adapter from whatever user model your Django project is
+using to Nilpoint.  It doesn't currently do much other than sit
+between the user model and Nilpoint's models, but that may change in
+future.
 
 A Player object is referred to by PlayerCharacter objects.
 
 ### PlayerCharacter
 
-A PlayerCharacter is a Player's character in a given game.  Games may allow a single Player to have multiple PlayerCharacters, or not. If Player plays multiple games, they will have a PlayerCharacter for each of them.
+A PlayerCharacter is a Player's character in a given game.  Games may
+allow a single Player to have multiple PlayerCharacters, or not. If
+Player plays multiple games, they will have a PlayerCharacter for each
+of them.
 
-PlayerCharacters have a "handle" which is the name that the game will use for them.  They also keep track of the location of the player in the game, and are referred-to by any records that relate to a single player in a given game, such as inventory items, etc.
+PlayerCharacters have a "handle" which is the name that the game will
+use for them.  They also keep track of the location of the player in
+the game, and are referred-to by any records that relate to a single
+player in a given game, such as inventory items, etc.
 
-When a new PlayerCharacter is created, it creates all of the records required by the intersection of a player and a game. This could be LocationItems, InventoryItems, etc.
+When a new PlayerCharacter is created, it creates all of the records
+required by the intersection of a player and a game. This could be
+LocationItems, InventoryItems, etc.
 
 ### Location
 
-A Location is a place in a Game.  When a Game instance is created, all of its locations are instantiated too. So if you have two instances of a single game, the locations will be instantiated twice.  This allows for some level of customisation between game instances, such as changing location names, graphics, etc.
+A Location is a place in a Game.  When a Game instance is created, all
+of its locations are instantiated too. So if you have two instances of
+a single game, the locations will be instantiated twice.  This allows
+for some level of customisation between game instances, such as
+changing location names, graphics, etc.
 
 ### Exit
 
-An exit joins two locations in a single direction.  There is a utility function (`Exit.create_two_way_exit(...)` to simplify making a bidirectional exit between two locations.
+An exit joins two locations in a single direction.  There is a utility
+function (`Exit.create_two_way_exit(...)` to simplify making a
+bidirectional exit between two locations.
+
+TODO: Look again at the two-way exit making thing.  Deal with the need
+to check game type as well as id. Or so I?
 
 ### Item
 
-Items are ideals of things that exist in the world. If multiple players have item X in their inventory, they are all referring to one Item object for that game through individual InventoryItem objects.  Similarly, if an item appears in a location, players interact with a LocationItem rather than the Item itself.
+Items are ideals of things that exist in the world. If multiple
+players have item X in their inventory, they are all referring to one
+Item object for that game through individual InventoryItem objects.
+Similarly, if an item appears in a location, players interact with a
+LocationItem rather than the Item itself.
 
 ### InventoryItem / LocationItem
 
-InventoryItem and LocationItem are how Items become visible, manipulable by players.  If an Item for a game should exist at a location, each player will need a LocationItem that maps the Location to the Item.  If they pick it up, the LocationItem for that player is deleted and an InventoryItem is created.  Other players will see no effect.
+InventoryItem and LocationItem are how Items become visible,
+manipulable by players.  If an Item for a game should exist at a
+location, each player will need a LocationItem that maps the Location
+to the Item.  If they pick it up, the LocationItem for that player is
+deleted and an InventoryItem is created.  Other players will see no
+effect.
 
 ### GameAsset
 
-GameAsset is an abstract class that classes related to a game inherit from. The purpose is to add a layer of unique ID to the asset that is unrelated to database IDs and in a scheme decided by the game creator. The goal is to allow assets to be found quickly in a way that makes sense to the creator.  This is particularly important when creating new characters, updating game items, etc.
+GameAsset is an abstract class that classes related to a game inherit
+from. The purpose is to add a layer of unique ID to the asset that is
+unrelated to database IDs and in a scheme decided by the game
+creator. The goal is to allow assets to be found quickly in a way that
+makes sense to the creator.  This is particularly important when
+creating new characters, updating game items, etc.
 
-For example, we may need to give each new PlayerCharacter an Item. The Item will exist, but the unique DB key is likely to be different on the production system than it was on the developer system.  The name of the item may also have changed since the game was instantiated.  When the Item was created, along side the user-facing data such as it's name and description, and in addition to the automatic DB id assignment, it would have been given an asset_id, dictated by the GameAsset class.  The Game class has a `get_asset` method that will find the right object based on this ID, restricted to objects related to the current game instance.
+For example, we may need to give each new PlayerCharacter an Item. The
+Item will exist, but the unique DB key is likely to be different on
+the production system than it was on the developer system.  The name
+of the item may also have changed since the game was instantiated.
+When the Item was created, along side the user-facing data such as
+it's name and description, and in addition to the automatic DB id
+assignment, it would have been given an asset_id, dictated by the
+GameAsset class.  The Game class has a `get_asset` method that will
+find the right object based on this ID, restricted to objects related
+to the current game instance.
 
 ### PlayerScoped
 
@@ -79,9 +130,9 @@ New game state models should subclass `PlayerScoped` rather than reimplementing 
 
 `StatefulMixin` provides per-instance state for any model (e.g., `LocationItem`, `InventoryItem`, future machines). It adds:
 
-- `item_state` property — dict-like access to per-instance state (`get`, `put`, `pop`, `keys`, `len`, `in`, iteration)
-- `transfer_state_to(other)` — copies state to another instance
-- `transfer_item_state(from, to)` — standalone helper for take/drop
+- `item_state` property - dict-like access to per-instance state (`get`, `put`, `pop`, `keys`, `len`, `in`, iteration)
+- `transfer_state_to(other)` - copies state to another instance
+- `transfer_item_state(from, to)` - standalone helper for take/drop
 
 State is stored in `ItemState` model (GenericForeignKey + pickled BinaryField), allowing flexible per-instance schemas without migrations.
 
@@ -115,11 +166,11 @@ items may share one class, and per-player state belongs in `item_state` (see
 
 #### Hooks
 
-| Where | Method | Purpose | Default |
-|-------|--------|---------|---------|
-| Interaction | `can(instance, action)` | The authoritative gate: offer `action`? (state, inventory, location...) | allows everything |
-| Action | `can(instance, interaction)` | The action's own gate, for what it can judge about itself | allows everything |
-| Action | `handle(instance, interaction, request)` | Execute the action when triggered | raises `NotImplementedError` |
+| Where       | Method                                   | Purpose                                                                 | Default                      |
+|-------------|------------------------------------------|-------------------------------------------------------------------------|------------------------------|
+| Interaction | `can(instance, action)`                  | The authoritative gate: offer `action`? (state, inventory, location...) | allows everything            |
+| Action      | `can(instance, interaction)`             | The action's own gate, for what it can judge about itself               | allows everything            |
+| Action      | `handle(instance, interaction, request)` | Execute the action when triggered                                       | raises `NotImplementedError` |
 
 Both `can` gates are enforced by the view before `handle` runs, not just by
 the buttons in the UI. After `handle` runs the interaction area always
@@ -128,6 +179,13 @@ The return value only contributes a message to the player log: a returned
 string appears as-is, the text content of a returned `HttpResponse` is logged
 (any triggers it set, e.g. panel refreshes, survive), and `None` means no
 message.
+
+Every performed action also fires an `item_state_changed` event, which the
+**item detail** listens for: flick a lamp or unlock a keypad and the open
+detail re-requests itself, so its state display never keeps the pre-action
+copy. Panel loads fire nothing (showing the panel changes nothing - and a
+load-time firing would loop, since the detail's refresh re-renders the
+panel's auto-load div), and a refused action fires nothing either.
 
 A small library of generic `Action`s covers the common effects - `StateToggle`
 flips a boolean, `SetState` pins a key to a value - each configured by
@@ -300,26 +358,36 @@ survive a move. Both responses trigger `inventory_items_changed` and
 `location_items_changed`; moving through an exit triggers
 `player_location_changed`.
 
-The panels listen to those events and refresh themselves, and so does the
-**item detail**: its `#nilpoint-item-detail` region re-requests the same
-record whenever items move or the player changes location or character, so an
-open detail never shows a stale copy. `handle_item_detail` is the gate — the
-region **blanks** when the record is gone, or when
-`_item_detail_is_accessible(instance, pc)` returns `False` (default: a
-`LocationItem` must be where the character is; an `InventoryItem` is always
-accessible). Override `_item_detail_is_accessible` on your view for your own
-rules — an item that evaporates, a container that locks, and so on.
-`item_detail_partial` names the content rendered inside that refresh wrapper.
+The panels listen to those events and refresh themselves, and so does
+the **item detail**: its `#nilpoint-item-detail` region re-requests
+the same record whenever items move, the player changes location or
+character, or a performed interaction action fires `item_state_changed`,
+so an open detail never shows a stale
+copy. `handle_item_detail` is the gate. The region **blanks** (the
+re-request will get the blank div, not an empty response) when the
+record is gone, or when `_item_detail_is_accessible(instance, pc)`
+returns `False` (default: a `LocationItem` must be where the character
+is; an `InventoryItem` is always accessible). Override
+`_item_detail_is_accessible` on your view for your own rules for
+anything else, such an item that evaporates, a container that locks,
+and so on.  `item_detail_partial` names the content rendered inside
+that refresh wrapper.
 
 ## Game archetypes and model overrides
 
-A Nilpoint game is created by subclassing the models.Game class and any required related classes, and subclassing the views.NilpointGameBasic view.
+A Nilpoint game is created by subclassing the models.Game class and
+any required related classes, and subclassing the
+views.NilpointGameBasic view.
 
-The Game subclass deals with all of the game setup and various bits of behaviour while the view handles requests to interact with game state.
+The Game subclass deals with all of the game setup and various bits of
+behaviour while the view handles requests to interact with game state.
 
-Some game classes get instantiated by core Nilpoint logic and subclasses need to be registered in order for this logic to use the correct one.
+Some game classes get instantiated by core Nilpoint logic and
+subclasses need to be registered in order for this logic to use the
+correct one.
 
-The Nilpoint settings module (nilpoint.nilpoint_settings) handles this.
+The Nilpoint settings module (nilpoint.nilpoint_settings) handles
+this.
 
 ## Architecture - TODO
 - Django app package layout
@@ -346,7 +414,10 @@ The Nilpoint settings module (nilpoint.nilpoint_settings) handles this.
 
 ### Template partial overrides via `_value_from_subclass_or_default`
 
-`NilpointGameBasic` provides a simple override mechanism for template partials. Each handler that renders a template checks for a corresponding class attribute on the view subclass; if present, that partial is used instead of the default.
+`NilpointGameBasic` provides a simple override mechanism for template
+partials. Each handler that renders a template checks for a
+corresponding class attribute on the view subclass; if present, that
+partial is used instead of the default.
 
 ```python
 # In your game's views.py
@@ -364,21 +435,24 @@ class MyGameView(NilpointGameBasic):
     new_player_character_submit = "mygame:new_pc_submit"  # URL name for form POST
 ```
 
-The core view's `_value_from_subclass_or_default(name, default)` method does the lookup: it checks `hasattr(self, name)` and returns the subclass's value if it exists, otherwise the provided default string.
+The core view's `_value_from_subclass_or_default(name, default)`
+method does the lookup: it checks `hasattr(self, name)` and returns
+the subclass's value if it exists, otherwise the provided default
+string.
 
 #### Handler to attribute mapping
 
-| Handler | Attribute | Default partial |
-|---------|-----------|-----------------|
-| `handle_landing` | `landing_partial` | `nilpoint/game_landing.jinja2#landing` |
-| `handle_overview` | `overview_partial` | `nilpoint/game_overview.jinja2#game_overview` |
-| `handle_get_location_graphic` | `location_graphic_partial` | `nilpoint/location_panel.jinja2#location_graphic` |
-| `handle_get_player_location_panel` | `player_location_panel` | `nilpoint/player_location_panel.jinja2#player_location_panel` |
-| `handle_get_location_item_panel` | `location_item_panel` | `nilpoint/location_item_panel.jinja2#location_item_panel` |
-| `handle_get_inventory_panel` | `inventory_panel` | `nilpoint/inventory_item_panel.jinja2#inventory_panel` |
-| `handle_item_detail` | `item_detail_partial` (the content inside the refresh wrapper) | `nilpoint/item_detail_panel.jinja2#item_detail_content` |
-| `handle_new_player_character` | `new_player_character_partial` | `nilpoint/new_player_character.jinja2#new_player_character` |
-| `handle_new_player_character` | `new_player_character_submit` | auto-derived dispatch URL |
+| Handler                            | Attribute                                                      | Default partial                                               |
+|------------------------------------|----------------------------------------------------------------|---------------------------------------------------------------|
+| `handle_landing`                   | `landing_partial`                                              | `nilpoint/game_landing.jinja2#landing`                        |
+| `handle_overview`                  | `overview_partial`                                             | `nilpoint/game_overview.jinja2#game_overview`                 |
+| `handle_get_location_graphic`      | `location_graphic_partial`                                     | `nilpoint/location_panel.jinja2#location_graphic`             |
+| `handle_get_player_location_panel` | `player_location_panel`                                        | `nilpoint/player_location_panel.jinja2#player_location_panel` |
+| `handle_get_location_item_panel`   | `location_item_panel`                                          | `nilpoint/location_item_panel.jinja2#location_item_panel`     |
+| `handle_get_inventory_panel`       | `inventory_panel`                                              | `nilpoint/inventory_item_panel.jinja2#inventory_panel`        |
+| `handle_item_detail`               | `item_detail_partial` (the content inside the refresh wrapper) | `nilpoint/item_detail_panel.jinja2#item_detail_content`       |
+| `handle_new_player_character`      | `new_player_character_partial`                                 | `nilpoint/new_player_character.jinja2#new_player_character`   |
+| `handle_new_player_character`      | `new_player_character_submit`                                  | auto-derived dispatch URL                                     |
 
 This keeps handler logic in core while letting game apps swap templates freely.
 
@@ -404,13 +478,13 @@ Nilpoint provides template tags in `nilpoint_tags` to simplify common HTMX patte
 
 **Available tags:**
 
-| Tag | Purpose | Key Parameters |
-|-----|---------|----------------|
-| `nilpoint_panel` | HTMX panel div (GET) | `panel_id`, `action`, `triggers`, `target`, `swap` |
-| `nilpoint_action` | Action link/button | `text`, `action`, `method`, `target`, `swap`, `classes` |
-| `nilpoint_form` | Form (GET+POST) | `form_id`, `action`, `method`, `target`, `swap` |
-| `nilpoint_interact_actions` | One button per available interaction action (each a GET with the action name); the default interaction panel | `instance`, `target`, `swap`, `classes` |
-| `nilpoint_interaction_panel` | The item detail's interaction region: always auto-loads the interaction's `partial` | `instance` |
+| Tag                          | Purpose                                                                                                      | Key Parameters                                          |
+|------------------------------|--------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+| `nilpoint_panel`             | HTMX panel div (GET)                                                                                         | `panel_id`, `action`, `triggers`, `target`, `swap`      |
+| `nilpoint_action`            | Action link/button                                                                                           | `text`, `action`, `method`, `target`, `swap`, `classes` |
+| `nilpoint_form`              | Form (GET+POST)                                                                                              | `form_id`, `action`, `method`, `target`, `swap`         |
+| `nilpoint_interact_actions`  | One button per available interaction action (each a GET with the action name); the default interaction panel | `instance`, `target`, `swap`, `classes`                 |
+| `nilpoint_interaction_panel` | The item detail's interaction region: always auto-loads the interaction's `partial`                          | `instance`                                              |
 
 All tags auto-generate the dispatch URL from the `game` in context.
 
@@ -426,12 +500,34 @@ All tags auto-generate the dispatch URL from the `game` in context.
 - Configure Django settings
 - Set up NILPOINT_SETTINGS
 
-## Example usage - TODO
-- Creating a game instance
-- Defining a game-specific player character subclass
-- Registering game model classes
-- Loading a game by slug
-- Rendering the game landing page
+## Example game
+
+A complete working game ships inside the package at
+[`src/nilpoint/demo`](src/nilpoint/demo).  It is registered like any
+other game (INSTALLED_APPS + `NILPOINT_SETTINGS` in the host project;
+nothing in core imports it) and doubles as a fixture for nilpoint's own
+test suite. See `src/nilpoint/tests/test_demo_game.py` for the
+end-to-end walkthrough the documentation describes.
+
+What it demonstrates, in the order its release steps build it:
+
+| Piece                                   | Shows                                                                                                                                                                                                        |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `demo/models.py` - `DemoGame` steps 1–2 | Locations, `Exit.create_two_way_exit`, the game's default graphics, extending a world that already exists                                                                                                    |
+| `demo/models.py` - `DemoGame` step 3    | Items wired to interactions via `dotted_path()`, per-item config in `interaction_options`, the check-then-create idiom that keeps an interrupted step safe to re-run                                         |
+| `demo/models.py` - `DemoPC`             | A player character archetype with an extra field, plus a character release step that seeds each new character's own copies of the items                                                                      |
+| `demo/interactions.py` - `Lamp`         | The simplest interaction: a `StateToggle` action on per-player `item_state`                                                                                                                                  |
+| `demo/interactions.py` - `Keypad`       | A custom `partial` (code-entry form while locked, standard buttons once unlocked), an `Action` subclass that reads request data, and a `can` gate that swaps the offered actions and is enforced server-side |
+| `demo/views.py`                         | Overriding the landing page by naming a different `landing_partial` - no handler code copied                                                                                                                 |
+| `demo/templates/demo/`                  | A landing partial and the keypad's panel partial                                                                                                                                                             |
+
+To try it: add `nilpoint.demo` to `INSTALLED_APPS`, register
+`"demogame"` in `NILPOINT_SETTINGS` (games + archetypes pointing at
+`nilpoint_demo.DemoPC`), include the game's URLs under a
+`demogame` namespace, then create a `DemoGame` instance and run
+`python manage.py nilpoint_update_game --slug <slug> --full`.
+`python manage.py nilpoint_check_interactions --game <slug>` verifies
+the wiring.
 
 ## Management commands - TODO
 - nilpoint_list_games
