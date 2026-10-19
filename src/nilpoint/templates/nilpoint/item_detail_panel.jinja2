@@ -11,7 +11,7 @@
 {% endpartialdef %}
 {% partialdef item_icon %}
     {% if item %}
-        {% with curremt_item=item %}
+        {% with current_item=item %}
             {% partial item_icon_x %}
         {% endwith %}
     {% elif inventory_item.item %}
