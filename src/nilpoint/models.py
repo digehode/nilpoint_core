@@ -9,7 +9,13 @@ from django.shortcuts import reverse
 from django.apps import apps
 
 from model_utils.managers import InheritanceManager
-from .interactions import InteractiveMixin
+from .exceptions import UnresolvableInteraction
+from .interactions import (
+    DEFAULT_EXIT_REFUSAL,
+    ExitInteraction,
+    InteractiveMixin,
+    LocationInteraction,
+)
 from .nilpoint_settings import nilpoint_settings
 
 # TODO: move to using InheritanceManager in game instead of custom downcast functions?
@@ -335,8 +341,16 @@ class Player(models.Model):
         return self.user.username
 
 
-class Location(GameAsset):
-    """Represents a location in the game."""
+class Location(GameAsset, InteractiveMixin):
+    """Represents a location in the game.
+
+    A location may carry behaviour (a `LocationInteraction` subclass in
+    `interaction`) overriding what one player sees of it - a description
+    that reads better once the player holds a torch, a graphic that goes
+    dark at night.  Locations with no interaction render their own
+    description and graphic unchanged; render through `description_for(pc)`
+    and `graphic_for(pc)` to get the per-player view.
+    """
 
     name = models.CharField(
         help_text="A short name of the place, will be shown to the user",
@@ -358,12 +372,64 @@ class Location(GameAsset):
         default=False,
     )
 
+    # Which behaviour family this asset accepts: only a LocationInteraction
+    # may be wired to a room (an item's interaction would silently do
+    # nothing here, so it is a configuration error instead).
+    interaction_base = LocationInteraction
+
     @property
     def graphic_safe(self):
         """Returns the path to the graphic for the location, or the default if unset."""
         if not self.graphic:
             return self.game.default_location_graphic
         return self.graphic
+
+    def description_for(self, pc):
+        """The description `pc` sees of this location.
+
+        The interaction's `describe` override when it returns one, this
+        location's own `description` otherwise (including when there is no
+        interaction, the hook declines, or the hook raises - a broken view
+        rule shows the plain room rather than taking the page down).
+        """
+        interaction = self._interaction_for(pc)
+        if interaction is not None:
+            try:
+                override = interaction.describe(None)
+            except Exception:
+                override = None
+            if override is not None:
+                return override
+        return self.description
+
+    def graphic_for(self, pc):
+        """The graphic path `pc` sees - `graphic_safe`, unless overridden.
+
+        Like `description_for`: the interaction's `graphic` override when
+        it returns one, `graphic_safe` for no interaction, a None
+        decline, or a raising hook.
+        """
+        interaction = self._interaction_for(pc)
+        if interaction is not None:
+            try:
+                override = interaction.graphic(None)
+            except Exception:
+                override = None
+            if override is not None:
+                return override
+        return self.graphic_safe
+
+    def _interaction_for(self, pc):
+        """This location's interaction bound to `pc`, or None if unusable.
+
+        None means "no interaction configured" or "misconfigured" - a
+        broken path shouldn't take the page down; `nilpoint_check_interactions`
+        reports the underlying problem.
+        """
+        try:
+            return self.get_interaction(pc=pc)
+        except UnresolvableInteraction:
+            return None
 
     def __str__(self):
         return f"Location {self.id} - {self.name}"
@@ -378,8 +444,30 @@ class Location(GameAsset):
         ]
 
 
-class Exit(GameAsset):
-    """Represents a way out of the current location"""
+class ExitManager(InheritanceManager):
+    """Manager for exits, adding the per-player visibility filter.
+
+    `visible_to` is available on `Exit.objects` and - because Django builds
+    a location's related manager from this class - on `location.exits`, so
+    a template lists what one character can see with
+    `location.exits.visible_to(player_character)`.  It returns a list,
+    since visibility is judged per exit, hook by hook.
+    """
+
+    def visible_to(self, pc):
+        """The exits in this scope that `pc` can currently see."""
+        return [exit_obj for exit_obj in self.all() if exit_obj.visible_to(pc)]
+
+
+class Exit(GameAsset, InteractiveMixin):
+    """Represents a way out of the current location.
+
+    An exit may carry behaviour (an `ExitInteraction` subclass in
+    `interaction`) controlling whether it is listed for a player and
+    whether they may use it - e.g. a door that is only there once a keypad
+    code has been accepted.  Exits with no interaction are plain doors:
+    always listed, always usable.
+    """
 
     name = models.CharField(
         help_text="A name for the exit",
@@ -394,6 +482,13 @@ class Exit(GameAsset):
     exit_to = models.ForeignKey(
         Location, null=False, on_delete=models.CASCADE, related_name="entrances"
     )
+
+    # Which behaviour family this asset accepts: only an ExitInteraction
+    # may be wired to a door (an item's interaction would silently do
+    # nothing here, so it is a configuration error instead).
+    interaction_base = ExitInteraction
+
+    objects = ExitManager()
 
     @staticmethod
     def create_two_way_exit(location1, name1, location2, name2, asset_id_prefix):
@@ -422,6 +517,68 @@ class Exit(GameAsset):
         e1.save()
         e2.save()
         return (e1, e2)
+
+    def visible_to(self, pc):
+        """Whether this exit appears in `pc`'s exit list.
+
+        No interaction configured means visible.  A `visible` hook that
+        raises hides the exit - a broken gate fails closed - and a
+        misconfigured path hides it too, so a typo can't turn every door
+        into a wall on the page; `nilpoint_check_interactions` reports
+        the underlying problem.
+        """
+        interaction = self._interaction_for(pc)
+        if interaction is None:
+            # No interaction configured: a plain door.  A configured but
+            # misconfigured one fails closed (hidden).
+            return not self.interaction
+        try:
+            return bool(interaction.visible(None))
+        except Exception:
+            return False
+
+    def usable_by(self, pc):
+        """Whether `pc` may use this exit: visible *and* not refused.
+
+        An invisible exit is never usable, so a request that bypasses the
+        exit list cannot walk through a door the player cannot see.
+        `use_exit` enforces exactly this conjunction.  As with
+        `visible_to`, a raising or misconfigured gate fails closed.
+        """
+        interaction = self._interaction_for(pc)
+        if interaction is None:
+            return not self.interaction
+        try:
+            return bool(interaction.visible(None)) and bool(interaction.usable(None))
+        except Exception:
+            return False
+
+    def refusal_for(self, pc):
+        """The message logged when this exit refuses `pc`.
+
+        The interaction's `refusal` hook, or the framework default when
+        there is no interaction, the hook declines, or it raises.
+        """
+        interaction = self._interaction_for(pc)
+        if interaction is None:
+            return DEFAULT_EXIT_REFUSAL
+        try:
+            return interaction.refusal(None) or DEFAULT_EXIT_REFUSAL
+        except Exception:
+            return DEFAULT_EXIT_REFUSAL
+
+    def _interaction_for(self, pc):
+        """This exit's interaction bound to `pc`, or None if unusable.
+
+        None means "no interaction configured" or "misconfigured" - a
+        broken path shouldn't take the page down; `nilpoint_check_interactions`
+        reports the underlying problem.  Callers tell the two apart with
+        `self.interaction` to keep "no configuration" plain.
+        """
+        try:
+            return self.get_interaction(pc=pc)
+        except UnresolvableInteraction:
+            return None
 
 
 class ItemStateProxy:

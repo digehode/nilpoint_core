@@ -11,4 +11,5 @@ from nilpoint.views import NilpointGameBasic
 
 
 class DemoGameView(NilpointGameBasic):
-    landing_partial = "demo/landing.jinja2#landing"
+    # landing_partial = "demo/landing.jinja2#landing"
+    pass

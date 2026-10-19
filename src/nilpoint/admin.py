@@ -42,27 +42,17 @@ class PlayerCharacterAdmin(admin.ModelAdmin):
     list_display = ["handle", "player", "game"]
 
 
-@admin.register(Location)
-class LocationAdmin(admin.ModelAdmin):
-    model = Location
-    list_display = ["name", "description", "game", "graphic", "initial", "asset_id"]
+class InteractionAdminMixin:
+    """Admin display for a model carrying an `interaction` field.
 
-
-@admin.register(Exit)
-class ExitAdmin(admin.ModelAdmin):
-    model = Exit
-    list_display = ["name", "exit_from", "exit_to", "asset_id"]
-
-
-@admin.register(Item)
-class ItemAdmin(admin.ModelAdmin):
-    model = Item
-    list_display = ["name", "asset_id", "graphic", "interaction_summary"]
-    readonly_fields = ["interaction_detail"]
+    Adds the summary column and the read-only detail block; the host admin
+    lists `interaction_summary` in `list_display` and puts
+    `interaction_detail` in `readonly_fields`.
+    """
 
     @admin.display(description="Interaction")
     def interaction_summary(self, obj):
-        """Show which class handles this item, and how many actions it offers."""
+        """Show which class handles this asset, and how many actions it offers."""
         try:
             described = obj.describe_interaction()
         except UnresolvableInteraction as e:
@@ -85,6 +75,41 @@ class ItemAdmin(admin.ModelAdmin):
             "<pre>{}</pre>",
             json.dumps(described, indent=2, default=str),
         )
+
+
+@admin.register(Location)
+class LocationAdmin(InteractionAdminMixin, admin.ModelAdmin):
+    model = Location
+    list_display = [
+        "name",
+        "description",
+        "game",
+        "graphic",
+        "initial",
+        "asset_id",
+        "interaction_summary",
+    ]
+    readonly_fields = ["interaction_detail"]
+
+
+@admin.register(Exit)
+class ExitAdmin(InteractionAdminMixin, admin.ModelAdmin):
+    model = Exit
+    list_display = [
+        "name",
+        "exit_from",
+        "exit_to",
+        "asset_id",
+        "interaction_summary",
+    ]
+    readonly_fields = ["interaction_detail"]
+
+
+@admin.register(Item)
+class ItemAdmin(InteractionAdminMixin, admin.ModelAdmin):
+    model = Item
+    list_display = ["name", "asset_id", "graphic", "interaction_summary"]
+    readonly_fields = ["interaction_detail"]
 
 
 @admin.register(InventoryItem)

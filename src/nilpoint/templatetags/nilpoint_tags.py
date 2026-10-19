@@ -8,6 +8,13 @@ Provides tags to simplify common HTMX patterns in templates:
 - nilpoint_form: Render a form that GETs on load, POSTs on submit
 - nilpoint_interact_actions: Render a button per available interaction action
 - nilpoint_interaction_panel: Render the item detail interaction region
+
+And filters for the per-player view of a location (the Django template
+language cannot call a method with arguments, so the model helpers are
+exposed through these):
+- description_for: the description a character sees
+- graphic_for: the graphic path a character sees
+- visible_exits: the exits from a location a character can see
 """
 
 import json
@@ -28,6 +35,48 @@ def dict_to_query(value):
     if not value:
         return ""
     return "&".join(f"{k}={v}" for k, v in value.items())
+
+
+@register.filter
+def description_for(location, pc):
+    """The description `pc` sees of `location`.
+
+    Usage:
+        {{ player_character.current_location|description_for:player_character }}
+
+    The interaction's per-player override when there is one, the
+    location's own description otherwise.
+    """
+    if location is None:
+        return ""
+    return location.description_for(pc)
+
+
+@register.filter
+def graphic_for(location, pc):
+    """The graphic path `pc` sees of `location`.
+
+    Usage:
+        {% static player_character.current_location|graphic_for:player_character %}
+
+    The interaction's per-player override when there is one,
+    `graphic_safe` otherwise.
+    """
+    if location is None:
+        return ""
+    return location.graphic_for(pc)
+
+
+@register.filter
+def visible_exits(location, pc):
+    """The exits from `location` that `pc` can currently see.
+
+    Usage:
+        {% for e in player_character.current_location|visible_exits:player_character %}
+    """
+    if location is None:
+        return []
+    return location.exits.visible_to(pc)
 
 
 @register.simple_tag

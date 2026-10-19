@@ -4,12 +4,13 @@
     <div id="nilpoint-game-container">
         <h1>You are playing {{ game.instance_name }}</h1>
         {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
-        {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body" %}
-        {% nilpoint_panel "nilpoint-controls" "get_player_location_panel" triggers="load, player_character_changed from:body, player_location_changed from:body" %}
+        {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+        {% nilpoint_panel "nilpoint-controls" "get_player_location_panel" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
         {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
         {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
         <div id="nilpoint-item-detail-panel"></div>
-        {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %}
+        {# {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %} #}
+        {# move the log into a partial to make reuse in games cleaner #}
         <div id="nilpoint-log" aria-live="polite"></div>
         <script>
           if (!window.__nilpointLog) {

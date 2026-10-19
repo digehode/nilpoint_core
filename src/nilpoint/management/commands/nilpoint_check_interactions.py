@@ -9,13 +9,52 @@ shows up in development or CI rather than in play.
 Usage:
     python manage.py nilpoint_check_interactions
     python manage.py nilpoint_check_interactions --game cypherpunk --actions
+    python manage.py nilpoint_check_interactions --game demo --hooks
 """
 
 from django.apps import apps
 from django.core.management.base import BaseCommand
 
 from nilpoint.exceptions import UnresolvableInteraction
-from nilpoint.interactions import InteractiveMixin
+from nilpoint.interactions import (
+    ExitInteraction,
+    InteractiveItem,
+    InteractiveMixin,
+    LocationInteraction,
+)
+
+# The hook methods an interaction class may override, by asset kind.  A
+# typo'd hook (`visble`) is just an unused method at play time, so listing
+# what a class really defines makes the typo visible at a glance.
+HOOK_NAMES = (
+    "can",
+    "get_actions",
+    "get_context",
+    "visible",
+    "usable",
+    "refusal",
+    "describe",
+    "graphic",
+)
+
+# The family roots: the walk stops when it reaches the class the asset
+# declared as its `interaction_base` (or the default root).
+FAMILY_BASES = (InteractiveItem, ExitInteraction, LocationInteraction)
+
+
+def declared_hooks(interaction_class):
+    """The hook methods `interaction_class` defines itself.
+
+    Walks the MRO from the class up to (but not including) its family base,
+    collecting hooks along the way, so hooks inherited through an
+    intermediate game subclass are counted too.
+    """
+    hooks = []
+    for cls in interaction_class.__mro__:
+        if cls in FAMILY_BASES:
+            break
+        hooks.extend(name for name in HOOK_NAMES if name in cls.__dict__)
+    return [name for name in HOOK_NAMES if name in hooks]
 
 
 class Command(BaseCommand):
@@ -36,6 +75,14 @@ class Command(BaseCommand):
             help="Also list the actions each interaction class offers",
         )
         parser.add_argument(
+            "--hooks",
+            action="store_true",
+            help=(
+                "Also list the behaviour hooks each interaction class "
+                "overrides (visible, usable, refusal, describe, graphic, ...)"
+            ),
+        )
+        parser.add_argument(
             "--include-unused",
             action="store_true",
             help="Also list assets that have no interaction class",
@@ -44,6 +91,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         slug = options.get("game")
         show_actions = options.get("actions")
+        show_hooks = options.get("hooks")
         include_unused = options.get("include_unused")
 
         interactive_models = [
@@ -91,6 +139,10 @@ class Command(BaseCommand):
 
                 self.stdout.write(self.style.SUCCESS(f"  ok   {path}"))
                 self.stdout.write(f"       {len(objects)} asset(s): {asset_ids}")
+                if show_hooks:
+                    hooks = declared_hooks(interaction_class)
+                    listed = ", ".join(hooks) if hooks else "(none)"
+                    self.stdout.write(f"         hooks: {listed}")
                 if show_actions:
                     described = interaction_class(objects[0]).describe()
                     for action in described:

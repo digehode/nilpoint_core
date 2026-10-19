@@ -947,7 +947,14 @@ class NilpointGameBasic(View):
 
     @require_http_methods("POST")
     def handle_use_exit(self, request, *args, **kwargs):
-        """Change the player character's location by using an exit. The ID of the exit should be given as 'exit' in the post request."""
+        """Change the player character's location by using an exit. The ID of the exit should be given as 'exit' in the post request.
+
+        The exit must be at the character's current location and belong to
+        this game, and the exit's own rules must allow it: `usable_by(pc)`
+        is `visible and usable`, so a hidden door cannot be forced with a
+        hand-crafted request.  A refusal returns the exit's `refusal_for`
+        message and leaves the character where they were.
+        """
 
         # Get the location ID from post
         exit_id = request.POST.get("exit", None)
@@ -961,6 +968,11 @@ class NilpointGameBasic(View):
             return HtmxTriggerResponse(
                 content="Invalid Exit - doesn't exist", content_type="text/plain"
             )
+        if exit_obj.game_id != self.game.id:
+            return HtmxTriggerResponse(
+                content="Invalid Exit - not part of this game",
+                content_type="text/plain",
+            )
         # Get the PC
         pc = self.player_character
         # Get the PC location
@@ -971,6 +983,8 @@ class NilpointGameBasic(View):
                 content="Invalid Exit - not at current location",
                 content_type="text/plain",
             )
+        if not exit_obj.usable_by(pc):
+            return self._error_response(exit_obj.refusal_for(pc))
         # Change the location
         pc.current_location = exit_obj.exit_to
         pc.save()

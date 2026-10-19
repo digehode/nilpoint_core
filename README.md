@@ -70,6 +70,10 @@ a single game, the locations will be instantiated twice.  This allows
 for some level of customisation between game instances, such as
 changing location names, graphics, etc.
 
+A location may also carry per-player behaviour (what *this* character
+sees of the room) - see
+[Dynamic exits and locations](#dynamic-exits-and-locations).
+
 ### Exit
 
 An exit joins two locations in a single direction.  There is a utility
@@ -78,6 +82,10 @@ bidirectional exit between two locations.
 
 TODO: Look again at the two-way exit making thing.  Deal with the need
 to check game type as well as id. Or so I?
+
+An exit may also carry per-player behaviour (is it listed for this
+character, may they use it) - see
+[Dynamic exits and locations](#dynamic-exits-and-locations).
 
 ### Item
 
@@ -300,7 +308,113 @@ shape:
 
 The `nilpoint_check_interactions` command also summarises configured
 interactions: `--actions` lists each class's actions and its partial,
-`--game <slug>` limits by game.
+`--hooks` lists the behaviour hooks each class overrides, `--game <slug>`
+limits by game.
+
+### Dynamic exits and locations
+
+Exits and locations can carry behaviour too, by the same machinery as
+items: name an `ExitInteraction` or `LocationInteraction` subclass in the
+asset's `interaction` field. An asset with nothing configured for interaction works as a static item that doesn't change behaviour based on user game state.
+
+**Exits.** Three hooks, all judgement over per-player state:
+
+| Hook                | Purpose                                                        | Default                                  |
+|---------------------|----------------------------------------------------------------|------------------------------------------|
+| `visible(instance)` | Is the exit in this character's exit list?                     | yes                                      |
+| `usable(instance)`  | May this character use it? (locked, needs a key, ...)          | yes                                      |
+| `refusal(instance)` | The message logged when the exit refuses them                  | `"You can't use that exit at the moment"` |
+
+The view enforces `visible and usable` server-side in `use_exit`, so a
+hand-crafted POST cannot walk through a door the character cannot see.
+Hidden also means unusable. The exit list itself comes from
+`location.exits.visible_to(pc)`; in templates use the `visible_exits`
+filter, since the Django template language cannot call a method with
+arguments:
+
+```python
+# mygame/interactions.py
+from nilpoint.interactions import ExitInteraction
+
+class ServiceDoor(ExitInteraction):
+    """The storeroom door: only there once the latch is lifted."""
+
+    def visible(self, instance):
+        return bool(self.pc.item_state.get("storeroom_open"))
+```
+
+```python
+# in a release step
+door.interaction = ServiceDoor.dotted_path()
+door.save()
+```
+
+**Locations.** Two hooks: `describe(instance)` and `graphic(instance)`,
+each returning the override for this character or `None` to fall through
+to the location's own `description` / `graphic_safe`. Render through
+`location.description_for(pc)` and `location.graphic_for(pc)` - the
+`description_for` and `graphic_for` template filters are their
+template-side equivalents.
+
+**Rules read, actions write.** The hooks only ever read state -
+`self.pc.item_state`, `self.pc.inventory_items()`, `self.options` - so
+they cannot bleed between characters: each character is judged on their
+own state. The effect of changing that state lives on an `Action`, and
+`SetState`/`StateToggle` take `state_target="pc"` to write the
+character's own state (the default still writes the player's copy of the
+item record). The demo's keypad is the worked example: its unlock writes
+`storeroom_open` on the character, its lock clears that one key, and the
+storeroom door's `visible` reads the same key - keypad panel and door are
+one fact in one home, so they cannot disagree. See
+[`demo/interactions.py`](src/nilpoint/demo/interactions.py) and the
+storeroom walkthrough in `test_demo_game.py`.
+
+**Shipped generic gates.** For the common cases there are two
+ready-made classes, configured on the asset itself via
+`interaction_options`:
+
+```python
+door.interaction = RequiresPCState.dotted_path()
+door.interaction_options = {"state_key": "storeroom_open"}
+
+door.interaction = HasItem.dotted_path()
+door.interaction_options = {"asset_id": "BRASS_KEY"}  # needs it in inventory
+```
+
+`RequiresPCState` only lists the door while the key holds truthy on the
+character (no key configured: closed). `HasItem` keeps the door visible
+- the player can see the locked door - but unusable until the character
+carries the named item.
+
+**Rule-driven panels stay live.** Because exits are judged on per-player
+state, the exits list on screen can go stale: unlock a door with a keypad
+and the list must grow, relock it and the list must shrink. The landing
+handles this with no per-game wiring - the scene and controls panels
+subscribe to the state-change events the engine already fires after any
+interaction action or take/drop (`item_state_changed`,
+`inventory_items_changed`, `location_items_changed`, plus the
+moving/character events), so a door that opens or closes mid-session
+re-renders itself. This is also why a shipped generic gate like
+`RequiresPCState` needs no `Action` of its own: whatever writes the key
+it reads, the panel follows. A game that writes its own landing (as the
+demo does) must keep those `nilpoint_panel` triggers.
+
+**Family validation.** Each model declares which family it accepts -
+`Exit` requires an `ExitInteraction`, `Location` a `LocationInteraction`
+- so pointing a door at an item's interaction is a configuration error
+caught where the path resolves, rather than something that silently
+does nothing in play. `nilpoint_check_interactions --hooks` lists the
+hooks each configured class really defines, so a typo'd hook name
+(`visble`) stands out at a glance. A raising hook fails sensibly, I
+think: the door is hidden or refused, or the room falls back to its
+own description and graphic - never a page taken down.
+
+**Something more complex than a rule?** A door that is really a puzzle -
+search it, oil it, pick it - is better modelled as a non-takable
+`LocationItem` beside the exit, using the full item interaction
+machinery: the exit stays plain, and the item's `can` gates are what
+open the way. Exit interactions are for judgement about the exit itself
+(is it there, may it be used).
 
 ### Player log messages
 
@@ -515,9 +629,11 @@ What it demonstrates, in the order its release steps build it:
 |-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `demo/models.py` - `DemoGame` steps 1–2 | Locations, `Exit.create_two_way_exit`, the game's default graphics, extending a world that already exists                                                                                                    |
 | `demo/models.py` - `DemoGame` step 3    | Items wired to interactions via `dotted_path()`, per-item config in `interaction_options`, the check-then-create idiom that keeps an interrupted step safe to re-run                                         |
+| `demo/models.py` - `DemoGame` step 4    | An exit wired to an `ExitInteraction`: the storeroom door is listed (and usable) only for characters whose keypad code has been accepted                                                                     |
 | `demo/models.py` - `DemoPC`             | A player character archetype with an extra field, plus a character release step that seeds each new character's own copies of the items                                                                      |
 | `demo/interactions.py` - `Lamp`         | The simplest interaction: a `StateToggle` action on per-player `item_state`                                                                                                                                  |
 | `demo/interactions.py` - `Keypad`       | A custom `partial` (code-entry form while locked, standard buttons once unlocked), an `Action` subclass that reads request data, and a `can` gate that swaps the offered actions and is enforced server-side |
+| `demo/interactions.py` - `HiddenStoreroom` | The plainest exit rule: one hook reading the character's own state - the same single key the keypad's panel and actions read                                                                                    |
 | `demo/views.py`                         | Overriding the landing page by naming a different `landing_partial` - no handler code copied                                                                                                                 |
 | `demo/templates/demo/`                  | A landing partial and the keypad's panel partial                                                                                                                                                             |
 

@@ -3,11 +3,13 @@
 The demo ships inside the package as the worked example for game
 authors, so these tests pin the behaviour the documentation describes:
 release steps build the world (idempotently), new characters get their
-own copies of the items, and both interactions - a plain lamp and a
-coded keypad - work through the real view dispatch, per character.
+own copies of the items, and the interactions - a plain lamp, a coded
+keypad, and an exit whose door only exists for characters who opened it -
+work through the real view dispatch, per character.
 """
 
 import io
+import re
 from uuid import uuid4
 
 from django.contrib import admin
@@ -15,10 +17,10 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import RequestFactory, TestCase
 
-from nilpoint.demo.interactions import Keypad, Lamp
+from nilpoint.demo.interactions import HiddenStoreroom, Keypad, Lamp
 from nilpoint.demo.models import DemoGame, DemoPC
 from nilpoint.demo.views import DemoGameView
-from nilpoint.interactions import holder_type
+from nilpoint.interactions import DEFAULT_EXIT_REFUSAL, holder_type
 from nilpoint.models import (
     Exit,
     InventoryItem,
@@ -64,13 +66,13 @@ class DemoGameWorldTests(DemoGameTestCase):
     """The game's release steps build the documented world."""
 
     def test_full_update_reaches_the_latest_release(self):
-        self.assertEqual(self.game.release, 3)
+        self.assertEqual(self.game.release, 4)
 
-    def test_three_locations_with_one_initial(self):
+    def test_four_locations_with_one_initial(self):
         asset_ids = set(
             Location.objects.filter(game=self.game).values_list("asset_id", flat=True)
         )
-        self.assertEqual(asset_ids, {"LOBBY", "HALLWAY", "WORKSHOP"})
+        self.assertEqual(asset_ids, {"LOBBY", "HALLWAY", "WORKSHOP", "STOREROOM"})
         initial = Location.objects.get(game=self.game, initial=True)
         self.assertEqual(initial.asset_id, "LOBBY")
 
@@ -87,8 +89,21 @@ class DemoGameWorldTests(DemoGameTestCase):
                 ("HALLWAY", "LOBBY"),
                 ("HALLWAY", "WORKSHOP"),
                 ("WORKSHOP", "HALLWAY"),
+                ("HALLWAY", "STOREROOM"),
+                ("STOREROOM", "HALLWAY"),
             },
         )
+
+    def test_the_storeroom_door_carries_the_exit_interaction(self):
+        door = Exit.objects.get(
+            exit_from__asset_id="HALLWAY", exit_to__asset_id="STOREROOM"
+        )
+        self.assertEqual(door.interaction, HiddenStoreroom.dotted_path())
+        # The way back out is deliberately plain.
+        way_out = Exit.objects.get(
+            exit_from__asset_id="STOREROOM", exit_to__asset_id="HALLWAY"
+        )
+        self.assertEqual(way_out.interaction, "")
 
     def test_items_are_wired_to_their_interactions(self):
         note = self.game.get_asset("WELCOME_NOTE", Item)
@@ -131,7 +146,7 @@ class DemoGameWorldTests(DemoGameTestCase):
         )
         self.assertEqual(counts(), before)
         self.game.refresh_from_db()
-        self.assertEqual(self.game.release, 3)
+        self.assertEqual(self.game.release, 4)
 
     def test_check_interactions_resolves_the_demo_classes(self):
         out = io.StringIO()
@@ -139,20 +154,26 @@ class DemoGameWorldTests(DemoGameTestCase):
             "nilpoint_check_interactions",
             "--game",
             self.game.nilpoint_slug,
+            hooks=True,
             stdout=out,
         )
         output = out.getvalue()
-        self.assertIn("All 2 configured interaction(s) resolved.", output)
+        self.assertIn("All 3 configured interaction(s) resolved.", output)
         self.assertIn(Lamp.dotted_path(), output)
         self.assertIn(Keypad.dotted_path(), output)
+        self.assertIn(HiddenStoreroom.dotted_path(), output)
+        # The exit rule is one hook, and the command shows which.
+        self.assertIn("hooks: visible", output)
 
 
 class DemoCharacterTests(DemoGameTestCase):
     """New characters are seeded with their own copies of the items."""
 
-    def test_new_character_gets_its_items_at_release_three(self):
+    def test_new_character_gets_its_items(self):
         pc = self.make_pc("hero")
-        self.assertEqual(pc.release, 3)
+        # The character catches up to the game's release, skipping the
+        # game-only step 4 (the storeroom needs no character seeding).
+        self.assertEqual(pc.release, 4)
         self.assertEqual(pc.tagline, "")
 
         seeded = {
@@ -276,9 +297,7 @@ class DemoWalkthroughTests(DemoGameTestCase):
         self.assertEqual(
             response._log, [{"message": "The keypad buzzes.", "level": "success"}]
         )
-        self.assertIsNone(
-            LocationItem.objects.get(pk=keypad.pk).item_state.get("unlocked")
-        )
+        self.assertIsNone(self.pc.item_state.get("storeroom_open"))
 
         response = self._interact(keypad, "unlock", code="1234")
         self.assertEqual(
@@ -290,7 +309,10 @@ class DemoWalkthroughTests(DemoGameTestCase):
                 }
             ],
         )
-        self.assertTrue(
+        self.assertTrue(self.pc.item_state.get("storeroom_open"))
+        # One fact, one home: the keypad record keeps no parallel copy of
+        # the lock state that could fall out of step with the door.
+        self.assertIsNone(
             LocationItem.objects.get(pk=keypad.pk).item_state.get("unlocked")
         )
 
@@ -301,17 +323,13 @@ class DemoWalkthroughTests(DemoGameTestCase):
         # The view enforces the interaction's `can` gate, not just the UI.
         response = self._interact(keypad, "unlock", code="1234")
         self.assertIn(b"Can't enter the code that right now", response.content)
-        self.assertTrue(
-            LocationItem.objects.get(pk=keypad.pk).item_state.get("unlocked")
-        )
+        self.assertTrue(self.pc.item_state.get("storeroom_open"))
 
         response = self._interact(keypad, "lock")
         self.assertEqual(
             response._log, [{"message": "The keypad locks.", "level": "success"}]
         )
-        self.assertFalse(
-            LocationItem.objects.get(pk=keypad.pk).item_state.get("unlocked")
-        )
+        self.assertFalse(self.pc.item_state.get("storeroom_open"))
 
     def test_keypad_panel_switches_between_form_and_buttons(self):
         keypad = LocationItem.objects.get(pc=self.pc, item__asset_id="KEYPAD")
@@ -331,18 +349,128 @@ class DemoWalkthroughTests(DemoGameTestCase):
         self.assertIn("Lock it again", content)
         self.assertNotIn("keypad-form", content)
 
-    def test_unlocking_is_scoped_to_the_characters_own_keypad(self):
+    def test_unlocking_is_scoped_to_the_characters_own_state(self):
         sidekick = self.make_pc("sidekick")
         hero_keypad = LocationItem.objects.get(pc=self.pc, item__asset_id="KEYPAD")
-        sidekick_keypad = LocationItem.objects.get(pc=sidekick, item__asset_id="KEYPAD")
 
         self._interact(hero_keypad, "unlock", code="1234")
-        self.assertTrue(
-            LocationItem.objects.get(pk=hero_keypad.pk).item_state.get("unlocked")
+        self.assertTrue(self.pc.item_state.get("storeroom_open"))
+        self.assertIsNone(sidekick.item_state.get("storeroom_open"))
+
+    def _walk_to_hallway(self, pc=None):
+        lobby_exit = Exit.objects.get(
+            exit_from__asset_id="LOBBY", exit_to__asset_id="HALLWAY"
         )
-        self.assertIsNone(
-            LocationItem.objects.get(pk=sidekick_keypad.pk).item_state.get("unlocked")
+        self._dispatch("use_exit", {"exit": lobby_exit.pk}, pc=pc)
+        pc = pc or self.pc
+        pc.refresh_from_db()
+        self.assertEqual(pc.current_location.asset_id, "HALLWAY")
+
+    def _storeroom_door(self):
+        return Exit.objects.get(
+            exit_from__asset_id="HALLWAY", exit_to__asset_id="STOREROOM"
         )
+
+    def test_the_storeroom_door_opens_only_for_the_character_who_entered_the_code(
+        self,
+    ):
+        sidekick = self.make_pc("sidekick")
+        hallway = self.game.get_asset("HALLWAY", Location)
+        door = self._storeroom_door()
+
+        # Before the code: the door is in nobody's exit list.
+        self._walk_to_hallway()
+        self._walk_to_hallway(pc=sidekick)
+        self.assertNotIn(door, hallway.exits.visible_to(self.pc))
+        self.assertNotIn(door, hallway.exits.visible_to(sidekick))
+
+        # Naming the exit directly still refuses - hidden means unusable -
+        # and neither character is moved.
+        for pc in (self.pc, sidekick):
+            response = self._dispatch("use_exit", {"exit": door.pk}, pc=pc)
+            self.assertEqual(response.content.decode(), DEFAULT_EXIT_REFUSAL)
+            pc.refresh_from_db()
+            self.assertEqual(pc.current_location.asset_id, "HALLWAY")
+
+        # The hero's code opens the door for the hero alone.
+        hero_keypad = LocationItem.objects.get(pc=self.pc, item__asset_id="KEYPAD")
+        self._interact(hero_keypad, "unlock", code="1234")
+
+        self.assertIn(door, hallway.exits.visible_to(self.pc))
+        self.assertNotIn(door, hallway.exits.visible_to(sidekick))
+
+        # And the exit list itself shows only what each character can see.
+        response = self._dispatch("get_player_location_panel", {}, method="get")
+        self.assertIn("A plain door in the wall", response.content.decode())
+        response = self._dispatch(
+            "get_player_location_panel", {}, method="get", pc=sidekick
+        )
+        self.assertNotIn("A plain door in the wall", response.content.decode())
+
+        # The hero walks through; inside, the way back out is a plain exit.
+        response = self._dispatch("use_exit", {"exit": door.pk})
+        self.pc.refresh_from_db()
+        self.assertEqual(self.pc.current_location.asset_id, "STOREROOM")
+        storeroom = self.game.get_asset("STOREROOM", Location)
+        way_out = Exit.objects.get(
+            exit_from__asset_id="STOREROOM", exit_to__asset_id="HALLWAY"
+        )
+        self.assertIn(way_out, storeroom.exits.visible_to(self.pc))
+
+        # The sidekick's door is still shut - their state never changed.
+        self._dispatch("use_exit", {"exit": door.pk}, pc=sidekick)
+        sidekick.refresh_from_db()
+        self.assertEqual(sidekick.current_location.asset_id, "HALLWAY")
+
+    def _location_panel(self):
+        """The controls panel HTML: the exits a character can see right now."""
+        response = self._dispatch("get_player_location_panel", {}, method="get")
+        return response.content.decode()
+
+    def test_relocking_the_keypad_closes_the_storeroom_door(self):
+        hallway = self.game.get_asset("HALLWAY", Location)
+        door = self._storeroom_door()
+        keypad = LocationItem.objects.get(pc=self.pc, item__asset_id="KEYPAD")
+
+        # At the hallway the door is shut: not in the rule's list, and not
+        # on the panel the player is actually looking at.
+        self._walk_to_hallway()
+        self.assertNotIn(door, hallway.exits.visible_to(self.pc))
+        self.assertNotIn("A plain door in the wall", self._location_panel())
+
+        # Unlocking lifts the latch, and the exits list shows it.
+        self._interact(keypad, "unlock", code="1234")
+        self.assertTrue(self.pc.item_state.get("storeroom_open"))
+        self.assertIn(door, hallway.exits.visible_to(self.pc))
+        self.assertIn("A plain door in the wall", self._location_panel())
+
+        # Locking clears the one key the panel and the door both read.  The
+        # action also fires item_state_changed, which the controls panel
+        # subscribes to, so what the player sees cannot go stale.
+        response = self._interact(keypad, "lock")
+        self.assertEqual(
+            response._log, [{"message": "The keypad locks.", "level": "success"}]
+        )
+        self.assertIn("item_state_changed", response.htmx_triggers)
+        self.assertIs(self.pc.item_state.get("storeroom_open"), False)
+        self.assertNotIn(door, hallway.exits.visible_to(self.pc))
+        self.assertNotIn("A plain door in the wall", self._location_panel())
+
+        # The keypad's own panel agrees without a second state to consult.
+        response = self._interact(keypad, method="get")
+        self.assertIn("The keypad light is red.", response.content.decode())
+
+        # Hidden means unusable again: a forced use refuses and the hero
+        # stays put.
+        response = self._dispatch("use_exit", {"exit": door.pk})
+        self.assertEqual(response.content.decode(), DEFAULT_EXIT_REFUSAL)
+        self.pc.refresh_from_db()
+        self.assertEqual(self.pc.current_location.asset_id, "HALLWAY")
+
+        # And the code works again from scratch.
+        self._interact(keypad, "unlock", code="1234")
+        self.assertIn(door, hallway.exits.visible_to(self.pc))
+        self.assertIn("A plain door in the wall", self._location_panel())
 
 
 class DemoWiringTests(DemoGameTestCase):
@@ -373,3 +501,28 @@ class DemoWiringTests(DemoGameTestCase):
         self.assertIn("demo-intro", content)
         self.assertIn("A tiny world for tests", content)
         self.assertNotIn("deck-debug", content)
+
+    def test_demo_landing_keeps_the_rule_driven_panels_live(self):
+        """The demo's landing copy subscribes the same state-dependent panels.
+
+        The scene and controls panels show rule-driven content (a
+        location's graphic and description, and the exits a character can
+        see), so both must re-request when per-player state changes -
+        otherwise a door the keypad just relocked would linger on screen.
+        """
+        pc = self.make_pc("hero")
+        request = self.factory.get("/?action=landing")
+        request.user = pc.player.user
+        request.COOKIES["pc"] = str(pc.id)
+        view = DemoGameView()
+        content = view.get(
+            request, nilpoint_slug=self.game.nilpoint_slug
+        ).content.decode()
+
+        for panel_id in ("nilpoint-scene", "nilpoint-controls"):
+            match = re.search(
+                rf'id="{panel_id}"\s+hx-get="[^"]*"\s+hx-trigger="([^"]*)"',
+                content,
+            )
+            self.assertIsNotNone(match, f"{panel_id} was not rendered")
+            self.assertIn("item_state_changed", match.group(1))

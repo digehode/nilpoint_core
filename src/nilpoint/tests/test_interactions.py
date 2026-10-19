@@ -401,7 +401,9 @@ class InteractionLookupTests(TestCase):
     def test_get_interaction_asset(self):
         self.assertIs(get_interaction_asset(self.item), self.item)
         self.assertIs(get_interaction_asset(self.location_item), self.item)
-        self.assertIsNone(get_interaction_asset(self.location))
+        # Locations carry an interaction too now, so an asset is its own
+        # interaction asset whatever interactive kind it is.
+        self.assertIs(get_interaction_asset(self.location), self.location)
 
     def test_holder_type_is_wire_name(self):
         self.assertEqual(holder_type(self.location_item), "location_item")

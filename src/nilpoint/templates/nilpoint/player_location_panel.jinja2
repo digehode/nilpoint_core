@@ -5,16 +5,18 @@
         {% if player_character.current_location %}
             <div id="nilpoint-location-description-column">
                 <h1>{{ player_character.current_location.name }}</h1>
-                <p>{{ player_character.current_location.description }}</p>
+                <p>{{ player_character.current_location|description_for:player_character }}</p>
             </div>
             <div id="nilpoint-exits-column">
                 <h1>Exits</h1>
-                <p><ul>
-                    {% for e in player_character.current_location.exits.all %}
-                       <li> {% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}</li>
-                    {% empty %} <li>None</li>
-                  {% endfor %}
-		  </ul>
+                <p>
+                    <ul>
+                        {% for e in player_character.current_location|visible_exits:player_character %}
+                            <li>{% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}</li>
+                        {% empty %}
+                            <li>None</li>
+                        {% endfor %}
+                    </ul>
                 </p>
             </div>
         {% else %}

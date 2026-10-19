@@ -5,7 +5,13 @@ gives `test_interaction_fixtures` a real dotted path to exercise, since the
 resolver has to import a class from somewhere.
 """
 
-from nilpoint.interactions import Action, InteractiveItem, StateToggle
+from nilpoint.interactions import (
+    Action,
+    ExitInteraction,
+    InteractiveItem,
+    LocationInteraction,
+    StateToggle,
+)
 
 
 class WotsitLever(InteractiveItem):
@@ -131,3 +137,56 @@ class InterfaceOnlyInteraction(InteractiveItem):
     """
 
     partial = "nilpoint/test_interact_status_show.jinja2#status"
+
+
+class HiddenUnlessLit(ExitInteraction):
+    """An exit that only exists for a character whose state says it is lit."""
+
+    def visible(self, instance):
+        return bool(self.pc.item_state.get("lit"))
+
+
+class LockedUntilUnlatched(ExitInteraction):
+    """Listed, but unusable until the character's state says it is unlatched,
+    with a refusal message of its own."""
+
+    def usable(self, instance):
+        return bool(self.pc.item_state.get("unlatched"))
+
+    def refusal(self, instance):
+        return "The latch is fast."
+
+
+class BrokenExitGate(ExitInteraction):
+    """An exit whose hooks raise: a broken gate must count as closed."""
+
+    def usable(self, instance):
+        raise RuntimeError("the mechanism is jammed")
+
+    def refusal(self, instance):
+        raise RuntimeError("the mechanism is jammed")
+
+
+class TorchSight(LocationInteraction):
+    """A room that reads and looks different once the character's state says
+    the path is lit; a dark character falls through to the room's own values."""
+
+    def describe(self, instance):
+        if self.pc.item_state.get("lit"):
+            return "Flooded with warm light!"
+        return None
+
+    def graphic(self, instance):
+        if self.pc.item_state.get("lit"):
+            return "test/torchlit.png"
+        return None
+
+
+class BrokenRoomView(LocationInteraction):
+    """A view rule that raises: the room must still render its own values."""
+
+    def describe(self, instance):
+        raise RuntimeError("the lamp flickers and dies")
+
+    def graphic(self, instance):
+        raise RuntimeError("the lamp flickers and dies")

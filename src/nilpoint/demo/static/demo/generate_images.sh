@@ -25,6 +25,7 @@ mkdir -p locations items
 location "The Lobby" lobby
 location "The Hallway" hallway
 location "The Workshop" workshop
+location "The Storeroom" storeroom
 location "Default location graphic" default_location
 
 item "Welcome note" welcome_note

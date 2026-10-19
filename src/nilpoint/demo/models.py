@@ -13,7 +13,10 @@ What it demonstrates, in the order the release steps build it:
 3. Step 3 - items, wired to their interactions via `dotted_path()`,
    created with the check-then-create idiom that keeps an interrupted
    step safe to re-run.
-4. `DemoPC` - a player character archetype with an extra field, and a
+4. Step 4 - an exit wired to an `ExitInteraction`: the storeroom door
+   exists only for characters whose keypad code has been accepted, so
+   one shared rule over per-player state.
+5. `DemoPC` - a player character archetype with an extra field, and a
    character release step that seeds each new character's world.
 """
 
@@ -23,13 +26,13 @@ from django.db import models
 from nilpoint.decorators import release_step
 from nilpoint.models import Exit, Game, Item, Location, LocationItem, PlayerCharacter
 
-from .interactions import Keypad, Lamp
+from .interactions import HiddenStoreroom, Keypad, Lamp
 
 
 class DemoGame(Game):
     name = "The Demo Game"
     description = (
-        "A small three-room world that demonstrates how a nilpoint game "
+        "A small four-room world that demonstrates how a nilpoint game "
         "is built: locations, exits, items, interactions and release steps."
     )
 
@@ -141,6 +144,39 @@ class DemoGame(Game):
             interaction=Keypad.dotted_path(),
             interaction_options={"code": "1234"},
         )
+
+    @release_step(4)
+    def storeroom(self):
+        """The Storeroom: a door the hallway keypad opens.
+
+        Both exits are created plain - the way out needs no rules - and
+        then the hallway-side door is wired to an `ExitInteraction`.
+        Whether it is listed and usable is judged from the character's
+        own state, which the keypad's unlock writes and its lock clears,
+        so the door appears for the character who entered the code,
+        disappears again if they lock the keypad, and stays invisible
+        to everyone else.
+        """
+        hallway = self.get_asset("HALLWAY", Location)
+        storeroom = Location.objects.create(
+            asset_id="STOREROOM",
+            name="The Storeroom",
+            description=(
+                "Tall shelves of jars, a stepladder, and a bare bulb on a "
+                "cord that swings gently overhead."
+            ),
+            game=self,
+            graphic="demo/locations/storeroom.png",
+        )
+        storeroom_door, _ = Exit.create_two_way_exit(
+            hallway,
+            "A plain door in the wall",
+            storeroom,
+            "Back to the hallway",
+            asset_id_prefix="HALLWAY_STOREROOM",
+        )
+        storeroom_door.interaction = HiddenStoreroom.dotted_path()
+        storeroom_door.save()
 
 
 class DemoPC(PlayerCharacter):
