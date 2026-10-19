@@ -1,22 +1,126 @@
+/* ------- View transitions -------
+   htmx wraps swaps in document.startViewTransition (enabled by
+   nilpoint.js). Only named elements animate: each panel morphs between
+   its old and new box and its content cross-fades, so an update grows
+   into place instead of snapping. The page itself (root) must not
+   animate, or every swap would flash the whole screen. */
+
+:root {
+    --nilpoint-transition-duration: 350ms;
+}
+
+::view-transition-group(*) {
+    animation-duration: var(--nilpoint-transition-duration);
+    animation-timing-function: ease-in-out;
+}
+
+::view-transition-old(*) {
+    animation-duration: var(--nilpoint-transition-duration);
+    animation-timing-function: ease-out;
+}
+
+::view-transition-new(*) {
+    animation-duration: var(--nilpoint-transition-duration);
+    animation-timing-function: ease-in;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
-    animation-duration: 0.4s;
+    animation: none;
 }
 
-.htmx-settling img {
-    opacity: 0;
+/* Named panels: a changing box animates, unchanged panels do nothing. */
+#nilpoint-character-panel {
+    view-transition-name: nilpoint-character-panel;
 }
 
-img.transition,
-img.fade-in {
-    transition: opacity 250ms ease-in;
+#nilpoint-scene > img:not(.htmx-indicator) {
+    view-transition-name: nilpoint-scene-graphic;
 }
 
-img.fade {
-    transition: opacity 250ms ease-in;
+#nilpoint-location-description {
+    view-transition-name: nilpoint-location-description;
 }
 
-/* ------- Layout -------- */
+#nilpoint-location-item-panel {
+    view-transition-name: nilpoint-location-items;
+}
+
+#nilpoint-exits {
+    view-transition-name: nilpoint-exits;
+}
+
+#nilpoint-inventory-panel {
+    view-transition-name: nilpoint-inventory;
+}
+
+#nilpoint-item-detail-panel {
+    view-transition-name: nilpoint-item-detail;
+}
+
+#nilpoint-log {
+    view-transition-name: nilpoint-log;
+}
+
+/* Respect the user's motion preference: skip the animations, keep the
+   (instant) content updates. */
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none;
+    }
+}
+
+/* ------- Tokens -------
+   Everything structural reads from these; a game restyles the default
+   layout by overriding variables (its CSS loads after this file),
+   without touching selectors. */
+
+:root {
+    --nilpoint-panel-border: var(
+        --pico-muted-border-color,
+        rgba(128, 128, 128, 0.35)
+    );
+    --nilpoint-panel-border-width: 1px;
+    --nilpoint-panel-radius: var(--pico-border-radius, 0.25rem);
+    --nilpoint-panel-padding: 1rem;
+    --nilpoint-group-gap: 1rem;
+
+    /* The scene frame while its graphic loads. Deliberately flat: a swap
+       happens before the new image has decoded, and a transition snapshot can
+       catch the empty frame, so a plain colour reads as a soft cut instead of
+       a flashing placeholder. */
+    --nilpoint-scene-background: #0b0d10;
+
+    /* Reserved heights: panels keep their space across re-renders so
+       htmx swaps don't make the page outline jump. */
+    --nilpoint-description-min-height: 5rem;
+    --nilpoint-list-min-height: 10rem;
+    --nilpoint-detail-min-height: 14rem;
+    --nilpoint-log-min-height: 12rem;
+
+    /* Log level accents: readable on light and dark backgrounds alike. */
+    --nilpoint-log-entry-info: #6b7a8d;
+    --nilpoint-log-entry-success: #1a7f4b;
+    --nilpoint-log-entry-error: #b3261e;
+}
+
+/* Visually hidden but available to assistive technology: the landing's
+   group titles use it. */
+.nilpoint-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ------- Typography ------- */
 
 #nilpoint-container h1 {
     font-family: "Kode Mono", monospace;
@@ -25,70 +129,144 @@ img.fade {
     font-style: normal;
 }
 
+/* ------- Layout -------
+   The landing is a header row over two groups: location (scene,
+   description, then items and exits side by side) and character
+   (inventory, item detail, log).  Stacked by default; wide screens get
+   the side-by-side rows. */
+
+#nilpoint-game-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--nilpoint-group-gap);
+}
+
+#nilpoint-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--nilpoint-group-gap);
+}
+
+#nilpoint-location-group,
+#nilpoint-character-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--nilpoint-group-gap);
+}
+
+/* Grid children never widen their track past 1fr (long words, wide
+   buttons); the group titles are out of flow (visually hidden). */
+#nilpoint-location-group > *,
+#nilpoint-character-group > * {
+    min-width: 0;
+}
+
+@media (min-width: 768px) {
+    #nilpoint-location-group {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Scene and description stay full width; items and exits share the
+       row below them. */
+    #nilpoint-scene,
+    #nilpoint-location-description {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (min-width: 1024px) {
+    #nilpoint-character-group {
+        grid-template-columns: 1fr 2fr 1fr;
+    }
+}
+
+/* Panels share one frame.  The loading indicator shrinks so it fits
+   inside the reserved heights. */
 #nilpoint-character-panel,
 #nilpoint-scene,
-#nilpoint-controls {
-    border: 2px solid rgba(255, 255, 255, 0.125);
-    padding: 1rem;
+#nilpoint-location-description,
+#nilpoint-location-item-panel,
+#nilpoint-exits,
+#nilpoint-inventory-panel,
+#nilpoint-item-detail-panel {
+    border: var(--nilpoint-panel-border-width) solid
+        var(--nilpoint-panel-border);
+    border-radius: var(--nilpoint-panel-radius);
+    padding: var(--nilpoint-panel-padding);
 }
 
-#nilpoint-controls {
-    height: 15rem;
+#nilpoint-game-container img.htmx-indicator {
+    width: 2rem;
+    height: 2rem;
 }
 
-/* #nilpoint-character-panel { */
-/*     height: rem; */
-/* } */
-
+/* Scene: aspect ratio reserves the space before the graphic arrives. */
 #nilpoint-scene {
-    width: 100%;
-
-    aspect-ratio: 16 / 9; /* Forces a 16:9 widescreen ratio */
-
-    /* background-color: #3498db; */
-    padding: 0px;
-    background-image: url("/static/nilpoint/ui_elements/noise_tile.png");
-    background-repeat: repeat;
+    aspect-ratio: 16 / 9;
+    padding: 0;
+    background-color: var(--nilpoint-scene-background);
 }
 
 #nilpoint-scene img {
-    width: 100%; /* Forces the image width to match the container */
-    height: 100%; /* Forces the image height to match the container */
-    display: block; /* Removes the default bottom whitespace gap inherent to inline images */
-    object-fit: cover; /* Instructs the image to perfectly fill the space without distortion */
-}
-
-#nilpoint-player-location-panel {
-    display: flex;
-    gap: 1rem; /* Adjust space between columns */
-    padding: 0px;
     width: 100%;
+    height: 100%;
+    display: block; /* removes the inline image's bottom gap */
+    object-fit: cover;
 }
 
-#nilpoint-location-description-column {
-    /* border: 1px solid #0f0; */
-    flex: 0 0 70%;
-    margin: 0px;
-    padding: 1rem;
+/* Reserved heights: panels keep space across re-renders; capped to
+   prevent row heights from growing unbounded (content scrolls internally). */
+#nilpoint-location-description {
+    min-height: var(--nilpoint-description-min-height);
+    max-height: clamp(5rem, 40vh, 20rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
-#nilpoint-exits-column {
-    /* border: 1px solid #00f; */
-    flex: 0 0 30%;
-    margin: 0px;
-    padding: 1rem;
+#nilpoint-location-item-panel,
+#nilpoint-exits,
+#nilpoint-inventory-panel {
+    min-height: var(--nilpoint-list-min-height);
+    max-height: clamp(10rem, 45vh, 24rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+/* The log fills its row and scrolls inside itself; the stable gutter
+   keeps entries from shifting when the scrollbar appears. */
+#nilpoint-log {
+    padding: var(--nilpoint-panel-padding);
+    border: var(--nilpoint-panel-border-width) solid
+        var(--nilpoint-panel-border);
+    border-radius: var(--nilpoint-panel-radius);
+    min-height: var(--nilpoint-log-min-height);
+    max-height: clamp(12rem, 50vh, 28rem);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+    line-height: 1.5;
+    font-size: 0.95rem;
 }
 
 /* ------- Items ------- */
 
-/* Item detail panel: hidden until a detail is loaded into it */
-#nilpoint-item-detail-panel:empty {
-    display: none;
+/* Item detail: reserved while empty, with a hint instead of a hole. */
+#nilpoint-item-detail-panel {
+    min-height: var(--nilpoint-detail-min-height);
+    max-height: clamp(14rem, 55vh, 32rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
-#nilpoint-item-detail-panel {
-    border: 2px solid rgba(255, 255, 255, 0.125);
-    padding: 1rem;
+#nilpoint-item-detail-panel:empty::before {
+    content: "Select an item to see its details";
+    color: var(--pico-muted-color, #566);
 }
 
 /* Item detail: image + name/description.
@@ -133,7 +311,34 @@ img.fade {
     }
 }
 
-/* ------- /Layout ------- */
+/* ------- Log entries -------
+   Neutral default: the level shows as an accent edge (and a tint on
+   errors), not a colour scheme. Games theme the log through CSS. */
+
+.nilpoint-log-entry {
+    padding: 0.25rem 0.5rem;
+    border-left: 3px solid transparent;
+    word-break: break-word;
+}
+
+.nilpoint-log-entry.info {
+    border-left-color: var(--nilpoint-log-entry-info);
+}
+
+.nilpoint-log-entry.success {
+    border-left-color: var(--nilpoint-log-entry-success);
+}
+
+.nilpoint-log-entry.error {
+    border-left-color: var(--nilpoint-log-entry-error);
+    background-color: color-mix(
+        in srgb,
+        var(--nilpoint-log-entry-error) 10%,
+        transparent
+    );
+}
+
+/* ------- Glyph and item bits ------- */
 
 .fa-nilpoint {
     display: inline-block;
@@ -182,94 +387,3 @@ img.fade {
     width: auto;
     vertical-align: middle;
 }
-
-/* Log terminal effect */
-
-/* Terminal Container */
-#nilpoint-log {
-    font-family: "Kode Mono", monospace;
-    background-color: #0c100c;
-    color: #00ff66;
-    padding: 1.25rem;
-    border: 2px solid #00ff66;
-    border-radius: 6px;
-    box-shadow:
-        0 0 15px rgba(0, 255, 102, 0.15),
-        inset 0 0 15px rgba(0, 0, 0, 0.8);
-    max-height: 400px;
-    overflow-y: auto;
-    position: relative;
-    line-height: 1.5;
-    font-size: 0.95rem;
-}
-
-/* Optional CRT Scanline Effect Overlay */
-#nilpoint-log::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-        rgba(18, 16, 16, 0) 50%,
-        rgba(0, 0, 0, 0.25) 50%
-    );
-    background-size: 100% 4px;
-    pointer-events: none;
-    z-index: 2;
-    opacity: 0.6;
-}
-
-/* Base Log Entry */
-.nilpoint-log-entry {
-    position: relative;
-    z-index: 1;
-    padding: 0.25rem 0.5rem;
-    margin-bottom: 0.2rem;
-    border-left: 3px solid transparent;
-    word-break: break-word;
-    transition: background-color 0.15s ease;
-}
-
-.nilpoint-log-entry:hover {
-    background-color: rgba(255, 255, 255, 0.03);
-}
-
-/* Log Entry Variants */
-.nilpoint-log-entry.info {
-    color: #00e5ff;
-    border-left-color: #00e5ff;
-    text-shadow: 0 0 5px rgba(0, 229, 255, 0.4);
-}
-
-.nilpoint-log-entry.success {
-    color: #33ff77;
-    border-left-color: #33ff77;
-    text-shadow: 0 0 5px rgba(51, 255, 119, 0.4);
-}
-
-.nilpoint-log-entry.error {
-    color: #ff4d4d;
-    border-left-color: #ff4d4d;
-    text-shadow: 0 0 5px rgba(255, 77, 77, 0.4);
-}
-
-/* Terminal Custom Scrollbar */
-#nilpoint-log::-webkit-scrollbar {
-    width: 8px;
-}
-
-#nilpoint-log::-webkit-scrollbar-track {
-    background: #080a08;
-}
-
-#nilpoint-log::-webkit-scrollbar-thumb {
-    background: #005522;
-    border-radius: 2px;
-}
-
-#nilpoint-log::-webkit-scrollbar-thumb:hover {
-    background: #00ff66;
-}
-/* END LOG TERMINAL EFFECT */

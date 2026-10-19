@@ -2,14 +2,12 @@
 {% load nilpoint_tags %}
 {% partialdef location_graphic %}
     {% if location_graphic_override %}
-        <img class="fade"
-             src="{% static location_graphic_override %}"
+        <img src="{% static location_graphic_override %}"
              height="900"
              width="1600"
              alt="TODO: alt tags in the location record">
     {% else %}
-        <img class="fade"
-             src="{% static player_character.current_location|graphic_for:player_character %}"
+        <img src="{% static player_character.current_location|graphic_for:player_character %}"
              height="900"
              width="1600"
              alt="TODO: alt tags in the location record">

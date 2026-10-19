@@ -457,15 +457,48 @@ response.add_trigger("location_items_changed")
 The log has no markup of its own, just plain CSS selectors, so a game can
 restyle it by overriding the defaults:
 
-| Selector | Purpose |
-|----------|---------|
-| `#nilpoint-log` | the log container (the box itself) |
-| `#nilpoint-log::before` | the scanline overlay used by the default theme |
-| `.nilpoint-log-entry` | a single logged message |
-| `.nilpoint-log-entry.info` / `.success` / `.error` | the `level` class variant |
+| Selector                                           | Purpose                                                      |
+|----------------------------------------------------|--------------------------------------------------------------|
+| `#nilpoint-log`                                    | the log container (the box itself)                           |
+| `#nilpoint-log::before`                            | the scanline overlay a game theme can add (Cypherpunk's CRT) |
+| `.nilpoint-log-entry`                              | a single logged message                                      |
+| `.nilpoint-log-entry.info` / `.success` / `.error` | the `level` class variant                                    |
 
-The default styling in `nilpoint.css` is a green-on-black terminal; a game can
-restyle by overriding the same selectors, or hide the log entirely.
+The default in `nilpoint.css` is deliberately neutral: the box follows the
+page's light/dark colours and a message's `level` shows as a coloured accent
+edge, nothing more. Cypherpunk overrides the same selectors (in its own CSS)
+for the green-on-black terminal with scanlines. A game can restyle or hide
+the log the same way - no core template is involved.
+
+### Landing layout and transitions
+
+The default landing (`nilpoint/game_landing.jinja2#landing`) is a header over
+two labelled groups: **Location** (scene graphic, then description, then
+items and exits sharing a row) and **Character** (inventory, item detail and
+log as one row). It stacks on narrow screens and puts those rows side by side
+on wide ones. Panels have reserved min and max heights in `nilpoint.css`, so
+a re-render neither makes the page outline jump nor lets one long list or
+description stretch the row - content beyond the cap scrolls inside its own
+panel.
+
+`nilpoint/js/nilpoint.js` enables the browser's View Transitions API for
+htmx swaps: a panel cross-fades its content and animates between its old and
+new size instead of snapping. Elements opt in through `view-transition-name`
+in the CSS. The scene graphic is named too, so a location change cross-fades
+the old graphic into the new one; while a graphic is still loading the frame
+shows the flat `--nilpoint-scene-background` colour rather than a placeholder,
+which reads as a soft cut. The animations are skipped for users who prefer
+reduced motion. A game writing its own landing includes the script (and
+`nilpoint.css`) so its panels animate too:
+
+```jinja
+<script src="{% static 'nilpoint/js/nilpoint.js' %}"></script>
+```
+
+The script logs which method it selected on load (View Transitions supported
+or not, panel transition duration, motion preference). Set
+`window.__nilpointVerbose = true` in the console to log every swap that
+starts a view transition.
 
 ### Item take/drop mechanics
 

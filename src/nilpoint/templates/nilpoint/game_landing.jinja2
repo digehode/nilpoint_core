@@ -1,6 +1,7 @@
 {% load static i18n %}
 {% load nilpoint_tags %}
 {% partialdef landing %}
+    <script src="{% static 'nilpoint/js/nilpoint.js' %}"></script>
     <div id="nilpoint-game-container">
         <div id="nilpoint-header">
             <h1>You are playing {{ game.instance_name }}</h1>
