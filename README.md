@@ -461,14 +461,19 @@ restyle it by overriding the defaults:
 |----------------------------------------------------|--------------------------------------------------------------|
 | `#nilpoint-log`                                    | the log container (the box itself)                           |
 | `#nilpoint-log::before`                            | the scanline overlay a game theme can add (Cypherpunk's CRT) |
+| `#nilpoint-log::after`                             | the blinking terminal caret at the end of the transcript     |
 | `.nilpoint-log-entry`                              | a single logged message                                      |
+| `.nilpoint-log-entry::before`                      | the per-level glyph (`·` info, `✓` success, `!` error)       |
 | `.nilpoint-log-entry.info` / `.success` / `.error` | the `level` class variant                                    |
 
 The default in `nilpoint.css` is deliberately neutral: the box follows the
-page's light/dark colours and a message's `level` shows as a coloured accent
-edge, nothing more. Cypherpunk overrides the same selectors (in its own CSS)
-for the green-on-black terminal with scanlines. A game can restyle or hide
-the log the same way - no core template is involved.
+page's light/dark colours and a message's `level` shows as a glyph and a
+coloured accent edge, nothing more, so the level survives a greyscale
+screenshot rather than being carried by colour alone. The three level
+colours (`--nilpoint-log-entry-info` / `-success` / `-error`) flip for dark
+mode. Cypherpunk overrides the same selectors (in its own CSS) for the
+green-on-black terminal with scanlines. A game can restyle or hide the log
+the same way - no core template is involved.
 
 ### Landing layout and transitions
 
@@ -480,6 +485,21 @@ on wide ones. Panels have reserved min and max heights in `nilpoint.css`, so
 a re-render neither makes the page outline jump nor lets one long list or
 description stretch the row - content beyond the cap scrolls inside its own
 panel.
+
+The location name is the scene's caption: `handle_get_location_graphic`
+renders it as an `h3.nilpoint-scene-caption` over the graphic (with a scrim so
+it stays legible over any image), and the description panel below carries only
+the prose. The list panels carry a small uppercase `h3.nilpoint-panel-label`,
+so the heading order stays one `h1`, the two visually-hidden group `h2`s, then
+the panel `h3`s - a screen reader gets the outline a sighted player sees.
+
+Panels, buttons and labels are themed through CSS custom properties set on
+`:root` in `nilpoint.css` (`--nilpoint-panel-border`, `--nilpoint-panel-bg`,
+`--nilpoint-action-accent`, `--nilpoint-label-color`, ...). The defaults are
+neutral - the panel border is a deliberate ~3:1 against the page in both
+themes rather than Pico's near-invisible muted border - and a game retints
+them in its own stylesheet, which loads after `nilpoint.css`. Cypherpunk does
+exactly that for its green phosphor look.
 
 `nilpoint/js/nilpoint.js` enables the browser's View Transitions API for
 htmx swaps: a panel cross-fades its content and animates between its old and

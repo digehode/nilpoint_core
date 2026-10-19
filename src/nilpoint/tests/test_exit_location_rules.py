@@ -632,17 +632,23 @@ class LandingStructureTests(TwoRoomWorld):
         self.assertIn('aria-labelledby="nilpoint-character-group-title"', content)
 
     def test_panel_headings_are_h3s(self):
-        """The name, exits and inventory headings sit under the group h2."""
+        """The location name captions the scene; list panels carry HUD labels."""
         view, request = self._landing()
 
-        description = view.handle_get_location_description(request)
-        self.assertIn("<h3>Room A</h3>", description.content.decode())
+        graphic = view.handle_get_location_graphic(request).content.decode()
+        self.assertIn(
+            '<h3 class="nilpoint-scene-caption">Room A</h3>',
+            graphic,
+        )
 
-        exits = view.handle_get_location_exits(request)
-        self.assertIn("<h3>Exits</h3>", exits.content.decode())
+        description = view.handle_get_location_description(request).content.decode()
+        self.assertNotIn("<h3", description)
 
-        inventory = view.handle_get_inventory_panel(request)
-        self.assertIn("<h3>Inventory</h3>", inventory.content.decode())
+        exits = view.handle_get_location_exits(request).content.decode()
+        self.assertIn('<h3 class="nilpoint-panel-label">Exits</h3>', exits)
+
+        inventory = view.handle_get_inventory_panel(request).content.decode()
+        self.assertIn('<h3 class="nilpoint-panel-label">Inventory</h3>', inventory)
 
     def test_the_log_is_a_live_region_with_its_listener(self):
         content = self._landing_html()

@@ -2,7 +2,7 @@
 {% load nilpoint_tags %}
 {% partialdef location_item_panel %}
     {% if player_character.current_location %}
-        <h3>Items</h3>
+        <h3 class="nilpoint-panel-label">Items</h3>
         <ul id="nilpoint-item-list">
             {% for location_item in player_character.items_at.all %}
                 <li>

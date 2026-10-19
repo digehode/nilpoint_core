@@ -5,11 +5,14 @@
         <img src="{% static location_graphic_override %}"
              height="900"
              width="1600"
-             alt="TODO: alt tags in the location record">
+             alt="">
     {% else %}
         <img src="{% static player_character.current_location|graphic_for:player_character %}"
              height="900"
              width="1600"
-             alt="TODO: alt tags in the location record">
+             alt="">
+        {% if player_character.current_location %}
+            <h3 class="nilpoint-scene-caption">{{ player_character.current_location.name }}</h3>
+        {% endif %}
     {% endif %}
 {% endpartialdef %}

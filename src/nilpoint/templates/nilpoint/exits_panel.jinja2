@@ -1,7 +1,7 @@
 {% load static i18n %}
 {% load nilpoint_tags %}
 {% partialdef exits %}
-    <h3>Exits</h3>
+    <h3 class="nilpoint-panel-label">Exits</h3>
     {% if player_character.current_location %}
         <ul id="nilpoint-exits-list">
             {% for e in player_character.current_location|visible_exits:player_character %}

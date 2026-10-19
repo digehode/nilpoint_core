@@ -26,6 +26,24 @@
         return;
     }
 
+    // Mark the swap target busy while a request is in flight, and clear it
+    // afterwards. This is the accessible loading state: the spinner image is
+    // decorative (alt=""), so assistive tech reads the region as busy rather
+    // than hearing "Loading..." once per panel.
+    window.htmx.on("htmx:beforeRequest", (event) => {
+        var target = event.detail && event.detail.target;
+        if (target && target.setAttribute) {
+            target.setAttribute("aria-busy", "true");
+        }
+    });
+
+    window.htmx.on("htmx:afterRequest", (event) => {
+        var target = event.detail && event.detail.target;
+        if (target && target.removeAttribute) {
+            target.removeAttribute("aria-busy");
+        }
+    });
+
     // htmx wraps each swap in a View Transition but ignores the returned
     // promises. When one panel's swap starts a transition while another is
     // still running, the browser skips the older one and rejects its
