@@ -18,8 +18,8 @@ and multiple games can be run on a single server.
 Games can be played by multiple people, each exploring their own
 version of the game world.
 
-Nilpoint was created to enable the game "Cyperpunk", an adventure game
-of cryptography and cryptanalysis.
+Nilpoint was created to enable the game "Cypherpunk", an adventure
+game of cryptography and cryptanalysis.
 
 ## Overview -TODO
 
@@ -77,11 +77,8 @@ sees of the room) - see
 ### Exit
 
 An exit joins two locations in a single direction.  There is a utility
-function (`Exit.create_two_way_exit(...)` to simplify making a
+function (`Exit.create_two_way_exit(...)`) to simplify making a
 bidirectional exit between two locations.
-
-TODO: Look again at the two-way exit making thing.  Deal with the need
-to check game type as well as id. Or so I?
 
 An exit may also carry per-player behaviour (is it listed for this
 character, may they use it) - see
@@ -118,7 +115,7 @@ Item will exist, but the unique DB key is likely to be different on
 the production system than it was on the developer system.  The name
 of the item may also have changed since the game was instantiated.
 When the Item was created, along side the user-facing data such as
-it's name and description, and in addition to the automatic DB id
+its name and description, and in addition to the automatic DB id
 assignment, it would have been given an asset_id, dictated by the
 GameAsset class.  The Game class has a `get_asset` method that will
 find the right object based on this ID, restricted to objects related
@@ -148,29 +145,31 @@ New stateful models inherit `StatefulMixin` and automatically get `item_state` p
 
 ### Item interactions
 
-An item can be made interactive by naming an `InteractiveItem` subclass in its
-`interaction` field. That class owns the judgement and identity of the
-interaction: the action list, which actions are currently available (`can`),
-the panel shown for the interaction, and the extra context it needs. The
-*effect* of each action lives on the `Action` itself (`handle`). Nothing about
-a specific item's behaviour lives in core or in the `Game` subclass any more.
+An item can be made interactive by naming an `InteractiveItem`
+subclass in its `interaction` field. That class owns the judgement and
+identity of the interaction: the action list, which actions are
+currently available (`can`), the panel shown for the interaction, and
+the extra context it needs. The *effect* of each action lives on the
+`Action` itself (`handle`). Nothing about a specific item's behaviour
+lives in core or in the `Game` subclass any more.
 
-Every interaction renders exactly one **panel** - its `partial` attribute -
-decided at class level so every action behaves the same way. The default
-partial is one stacked button per available action, a click each. A class with
-an interface of its own (a device panel, a status readout) sets `partial` to
-its own template, and the actions live inside that one partial. An interaction
-with no actions at all still has a panel (the default renders "No actions
-available"), which is how a status-only interaction shows its readout.
+Every interaction renders exactly one **panel** - its `partial`
+attribute - decided at class level so every action behaves the same
+way. The default partial is one stacked button per available action, a
+click each. A class with an interface of its own (a device panel, a
+status readout) sets `partial` to its own template, and the actions
+live inside that one partial. An interaction with no actions at all
+still has a panel (the default renders "No actions available"), which
+is how a status-only interaction shows its readout.
 
 The panel is **always shown**: the item detail renders the
 `nilpoint_interaction_panel` tag, which emits a div that auto-loads
 the partial into `#nilpoint-interaction-panel` via htmx. I've moved
 back and forth on how to do this but I think this is the best bet.
 
-Interaction classes are plain Python classes (not Django models); several
-items may share one class, and per-player state belongs in `item_state` (see
-`StatefulMixin`), just like the old hooks.
+Interaction classes are plain Python classes (not Django models);
+several items may share one class, and per-player state belongs in
+`item_state` (see `StatefulMixin`).
 
 #### Hooks
 
@@ -437,7 +436,7 @@ response.add_trigger("location_items_changed")
 - The default landing page has a `#nilpoint-log` panel; a small script
   listens for the `nilpoint_log` event that the response fires and
   appends one entry per message. If you write your own landing page,
-  either steal the log script or do soemthign else with it that makes
+  either steal the log script or do something else with it that makes
   more sense for you.
 - The log is ephemeral - nothing is stored in the database. It survives HTMX
   round-trips (the panel lives in the landing partial) but is lost on a full
@@ -450,7 +449,9 @@ response.add_trigger("location_items_changed")
   buttons) - the message appears in the log instead of replacing the
   control that was clicked. Error is meant for errors the user should
   see, not system errors too: `response.add_log_item("That wotsit is
-  too heavy to take", level="error")`. But it's up to you.
+  too heavy to take", level="error")`. That is, these aren't errors of
+  game logic, but error-level highlighting of things in the game
+  worls. But it's up to you.
 
 The log has no markup of its own, just plain CSS selectors, so a game can
 restyle it by overriding the defaults:
@@ -476,17 +477,17 @@ survive a move. Both responses trigger `inventory_items_changed` and
 The panels listen to those events and refresh themselves, and so does
 the **item detail**: its `#nilpoint-item-detail` region re-requests
 the same record whenever items move, the player changes location or
-character, or a performed interaction action fires `item_state_changed`,
-so an open detail never shows a stale
+character, or a performed interaction action fires
+`item_state_changed`, so an open detail never shows a stale
 copy. `handle_item_detail` is the gate. The region **blanks** (the
 re-request will get the blank div, not an empty response) when the
 record is gone, or when `_item_detail_is_accessible(instance, pc)`
 returns `False` (default: a `LocationItem` must be where the character
 is; an `InventoryItem` is always accessible). Override
 `_item_detail_is_accessible` on your view for your own rules for
-anything else, such an item that evaporates, a container that locks,
-and so on.  `item_detail_partial` names the content rendered inside
-that refresh wrapper.
+anything else, such as an item that evaporates, a container that
+locks, and so on.  `item_detail_partial` names the content rendered
+inside that refresh wrapper.
 
 ## Game archetypes and model overrides
 
@@ -609,6 +610,21 @@ All tags auto-generate the dispatch URL from the `game` in context.
 - Using custom subclasses per game
 
 ## Installation - TODO
+
+### Quickstart - TODO
+
+Requires Python 3.13 or newer and Django 6.0.6 or newer (as declared in
+`pyproject.toml`).
+
+- The shortest path to a running game: install the package, add it and a
+  game app to `INSTALLED_APPS`, include Nilpoint's URLs, set up
+  `NILPOINT_SETTINGS`, run migrations
+- End with a smoke check (`nilpoint_update_game --full`, then
+  `nilpoint_check_interactions`) and show its expected output, so the
+  reader knows it worked
+
+The full installation checklist:
+
 - Install package
 - Add to INSTALLED_APPS
 - Add Nilpoint URLs
@@ -649,7 +665,15 @@ the wiring.
 ## Management commands - TODO
 - nilpoint_list_games
 - nilpoint_update_game
+- nilpoint_check_interactions
 - Example output and usage
+
+## Development - TODO
+- Running the test suite: it needs a host Django project to run against;
+  pytest config lives at `src/nilpoint/pytest.ini`
+- Making migrations after model changes
+- Lint and format with pre-commit
+- The demo game doubles as the test fixture
 
 ## Project structure - TODO - needed?
 - src/nilpoint/
@@ -669,6 +693,18 @@ the wiring.
 - Not a standalone game server
 - Still has placeholder/rough areas and TODOs
 
-## Credits / attribution - TODO
-- Link to ATTRIBUTION.md
+## Troubleshooting / FAQ - TODO
+- A panel did not refresh after state changed - the `nilpoint_panel`
+  `triggers` list, and which state-change events the engine fires
+- Renaming or moving an interaction class breaks items pointing at it -
+  the release step that rewrites the field, and `nilpoint_check_interactions`
+  catching it first
+- An exit is invisible or refuses to be used - the gates fail closed by
+  design, and where to look for the reason
+
+## Credits, license and links - TODO
+- Attribution: [ATTRIBUTION.md](ATTRIBUTION.md)
+- License: none chosen yet - add a LICENSE file and record it here and in
+  `pyproject.toml`
+- Contributing, and links to fuller docs
 - Django and HTMX, etc.
