@@ -541,7 +541,8 @@ class RuleDrivenPanelReloadTests(TwoRoomWorld):
         content = view.handle_landing(request).content.decode()
 
         match = re.search(
-            rf'id="{panel_id}"\s+hx-get="[^"]*"\s+hx-trigger="([^"]*)"', content
+            rf'id="{panel_id}"[^>]*?hx-trigger="([^"]*)"',
+            content,
         )
         self.assertIsNotNone(match, f"{panel_id} was not rendered")
         return match.group(1)
@@ -617,6 +618,33 @@ class LandingStructureTests(TwoRoomWorld):
             "nilpoint-log",
         ):
             self._assert_inside(content, "nilpoint-character-group", panel_id)
+
+    def test_the_console_wraps_the_game_container_in_a_bezel(self):
+        content = self._landing_html()
+
+        self.assertIn('<div class="nilpoint-bezel">', content)
+        self.assertLess(
+            content.index('class="nilpoint-bezel"'),
+            content.index('id="nilpoint-game-container"'),
+        )
+
+    def test_panels_share_the_nilpoint_panel_class(self):
+        """Every panel box carries the shared `.nilpoint-panel` styling hook."""
+        content = self._landing_html()
+
+        for panel_id in (
+            "nilpoint-character-panel",
+            "nilpoint-scene",
+            "nilpoint-location-description",
+            "nilpoint-location-item-panel",
+            "nilpoint-exits",
+            "nilpoint-inventory-panel",
+            "nilpoint-item-detail-panel",
+            "nilpoint-log",
+        ):
+            start = content.index(f'id="{panel_id}"')
+            tag = content[start : content.index(">", start)]
+            self.assertIn('class="nilpoint-panel"', tag, panel_id)
 
     def test_the_landing_has_one_h1_and_hidden_group_titles(self):
         content = self._landing_html()

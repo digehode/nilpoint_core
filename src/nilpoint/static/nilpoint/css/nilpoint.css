@@ -87,11 +87,12 @@
 
 :root {
     /* Panel frame. The border is deliberately stronger than Pico's
-       --pico-muted-border-color (which is ~1.2:1 against the page and reads as
-       no edge at all): ~3:1 against the page in both themes, so the panels
-       read as panels in light and dark mode alike. light-dark() follows the
-       color-scheme Pico sets on :root, including a host's data-theme toggle. */
-    --nilpoint-panel-border: light-dark(#8b94a3, #5b6472);
+       --pico-muted-border-color (which is ~1.2:1 against the surface and reads
+       as no edge at all): ~3:1 against the console bezel behind them in both
+       themes, so the panels read as panels in light and dark mode alike.
+       light-dark() follows the color-scheme Pico sets on :root, including a
+       host's data-theme toggle. */
+    --nilpoint-panel-border: light-dark(#808a9c, #5b6472);
     --nilpoint-panel-border-width: 1px;
     --nilpoint-panel-radius: var(--pico-border-radius, 0.25rem);
     --nilpoint-panel-padding: 1rem;
@@ -102,6 +103,20 @@
     );
     --nilpoint-panel-shadow: 0 1px 2px var(--nilpoint-shadow-color);
     --nilpoint-group-gap: 1rem;
+
+    /* Console bezel: the frame wrapping the whole game container, so the
+       landing reads as a console rather than a stack of cards. Neutral and
+       theme-adaptive by default; a game restyles it into a device of its own
+       (Cypherpunk's CRT) purely by overriding these. */
+    --nilpoint-bezel-bg: light-dark(#f1f3f7, #0e1219);
+    --nilpoint-bezel-border: light-dark(#c2c9d6, #262e3b);
+    --nilpoint-bezel-border-width: 1px;
+    --nilpoint-bezel-radius: calc(var(--nilpoint-panel-radius) * 2);
+    --nilpoint-bezel-padding: clamp(0.75rem, 2vw, 1.5rem);
+    --nilpoint-bezel-shadow:
+        0 2px 10px var(--nilpoint-shadow-color),
+        inset 0 1px 0
+        light-dark(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.03));
 
     /* The frame behind an item's icon. */
     --nilpoint-item-slot-bg: light-dark(
@@ -171,6 +186,19 @@
    (inventory, item detail, log).  Stacked by default; wide screens get
    the side-by-side rows. */
 
+/* The console frame: one wrapper around the game container. Core's default is
+   a plain theme-adaptive panel; a game restyles it through the
+   --nilpoint-bezel-* tokens (and may add its own pseudo-element texture). */
+.nilpoint-bezel {
+    box-sizing: border-box;
+    padding: var(--nilpoint-bezel-padding);
+    border: var(--nilpoint-bezel-border-width) solid
+        var(--nilpoint-bezel-border);
+    border-radius: var(--nilpoint-bezel-radius);
+    background: var(--nilpoint-bezel-bg);
+    box-shadow: var(--nilpoint-bezel-shadow);
+}
+
 #nilpoint-game-container {
     display: flex;
     flex-direction: column;
@@ -218,16 +246,11 @@
     }
 }
 
-/* Panels share one frame.  The loading indicator shrinks so it fits
-   inside the reserved heights. */
-#nilpoint-character-panel,
-#nilpoint-scene,
-#nilpoint-location-description,
-#nilpoint-location-item-panel,
-#nilpoint-exits,
-#nilpoint-inventory-panel,
-#nilpoint-item-detail-panel,
-#nilpoint-log {
+/* Every panel box carries .nilpoint-panel - the shared styling hook. Core's
+   frame lives here, so a game restyles every screen at once by targeting this
+   class (Cypherpunk turns them into recessed, glowing screens). The loading
+   indicator shrinks so it fits inside the reserved heights. */
+.nilpoint-panel {
     border: var(--nilpoint-panel-border-width) solid
         var(--nilpoint-panel-border);
     border-radius: var(--nilpoint-panel-radius);

@@ -1,6 +1,10 @@
 {# The game log: a live region plus the listener for the "nilpoint_log" HX-Trigger event. #}
 {# Included by the default landing; a game's own landing reuses it with {% include "nilpoint/log.jinja2" %}. #}
-<div id="nilpoint-log" role="log" aria-live="polite" aria-label="Game log"></div>
+<div id="nilpoint-log"
+     class="nilpoint-panel"
+     role="log"
+     aria-live="polite"
+     aria-label="Game log"></div>
 <script>
   if (!window.__nilpointLog) {
     window.__nilpointLog = true;          // landing partial re-renders; avoid duplicate listeners

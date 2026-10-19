@@ -471,9 +471,9 @@ page's light/dark colours and a message's `level` shows as a glyph and a
 coloured accent edge, nothing more, so the level survives a greyscale
 screenshot rather than being carried by colour alone. The three level
 colours (`--nilpoint-log-entry-info` / `-success` / `-error`) flip for dark
-mode. Cypherpunk overrides the same selectors (in its own CSS) for the
-green-on-black terminal with scanlines. A game can restyle or hide the log
-the same way - no core template is involved.
+mode. Cypherpunk overrides the same selectors (in its own CSS) for a
+green transcript on a theme-adaptive surface with faint scanlines. A game can
+restyle or hide the log the same way - no core template is involved.
 
 ### Landing layout and transitions
 
@@ -493,13 +493,22 @@ the prose. The list panels carry a small uppercase `h3.nilpoint-panel-label`,
 so the heading order stays one `h1`, the two visually-hidden group `h2`s, then
 the panel `h3`s - a screen reader gets the outline a sighted player sees.
 
+The whole landing sits inside one wrapper, `.nilpoint-bezel`, so the page reads
+as a console rather than a stack of cards. Core's bezel is neutral and
+theme-adaptive (a flat frame that follows light/dark); a game restyles it
+through the `--nilpoint-bezel-*` custom properties (background, border, radius,
+padding, shadow) and may add its own pseudo-element texture. Every panel box
+carries `.nilpoint-panel` - the shared styling hook - so a game can restyle all
+of the screens at once; Cypherpunk uses it for recessed, green-glowing screens
+inside a dark plastic bezel.
+
 Panels, buttons and labels are themed through CSS custom properties set on
 `:root` in `nilpoint.css` (`--nilpoint-panel-border`, `--nilpoint-panel-bg`,
 `--nilpoint-action-accent`, `--nilpoint-label-color`, ...). The defaults are
-neutral - the panel border is a deliberate ~3:1 against the page in both
-themes rather than Pico's near-invisible muted border - and a game retints
-them in its own stylesheet, which loads after `nilpoint.css`. Cypherpunk does
-exactly that for its green phosphor look.
+neutral - the panel border is a deliberate ~3:1 against the console frame
+behind it in both themes rather than Pico's near-invisible muted border - and a
+game retints them in its own stylesheet, which loads after `nilpoint.css`.
+Cypherpunk does exactly that for its green phosphor look.
 
 `nilpoint/js/nilpoint.js` enables the browser's View Transitions API for
 htmx swaps: a panel cross-fades its content and animates between its old and

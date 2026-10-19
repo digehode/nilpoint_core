@@ -2,28 +2,32 @@
 {% load nilpoint_tags %}
 {% partialdef landing %}
     <script src="{% static 'nilpoint/js/nilpoint.js' %}"></script>
-    <div id="nilpoint-game-container">
-        <div id="nilpoint-header">
-            <h1>You are playing {{ game.instance_name }}</h1>
-            {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
+    {# One console: the bezel frames every panel. Core's default is neutral and theme-adaptive; a game skins it in CSS via the --nilpoint-bezel-* tokens. #}
+    <div class="nilpoint-bezel">
+        <div id="nilpoint-game-container">
+            <div id="nilpoint-header">
+                <h1>You are playing {{ game.instance_name }}</h1>
+                {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
+            </div>
+            <section id="nilpoint-location-group"
+                     aria-labelledby="nilpoint-location-group-title">
+                <h2 id="nilpoint-location-group-title" class="nilpoint-visually-hidden">Location</h2>
+                {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+                {% nilpoint_panel "nilpoint-location-description" "get_location_description" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+                {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
+                {% nilpoint_panel "nilpoint-exits" "get_location_exits" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+            </section>
+            <section id="nilpoint-character-group"
+                     aria-labelledby="nilpoint-character-group-title">
+                <h2 id="nilpoint-character-group-title" class="nilpoint-visually-hidden">Character</h2>
+                {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
+                <div id="nilpoint-item-detail-panel" class="nilpoint-panel"></div>
+                {% include "nilpoint/log.jinja2" %}
+            </section>
+            {# {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %} #}
         </div>
-        <section id="nilpoint-location-group"
-                 aria-labelledby="nilpoint-location-group-title">
-            <h2 id="nilpoint-location-group-title" class="nilpoint-visually-hidden">Location</h2>
-            {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
-            {% nilpoint_panel "nilpoint-location-description" "get_location_description" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
-            {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
-            {% nilpoint_panel "nilpoint-exits" "get_location_exits" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
-        </section>
-        <section id="nilpoint-character-group"
-                 aria-labelledby="nilpoint-character-group-title">
-            <h2 id="nilpoint-character-group-title" class="nilpoint-visually-hidden">Character</h2>
-            {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
-            <div id="nilpoint-item-detail-panel"></div>
-            {% include "nilpoint/log.jinja2" %}
-        </section>
-        {# {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %} #}
+        {# nilpoint-game-container #}
     </div>
-    {# nilpoint-game-container #}
+    {# nilpoint-bezel #}
 {% endpartialdef %}
 {# src="{% static 'nilpoint/locations/00_none/simple.png' %}" /> #}
