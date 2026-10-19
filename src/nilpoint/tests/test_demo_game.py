@@ -9,7 +9,6 @@ work through the real view dispatch, per character.
 """
 
 import io
-import re
 from uuid import uuid4
 
 from django.contrib import admin
@@ -490,25 +489,13 @@ class DemoWiringTests(DemoGameTestCase):
         self.assertIn(DemoGame, admin.site._registry)
         self.assertIn(DemoPC, admin.site._registry)
 
-    def test_landing_page_uses_the_demo_override(self):
-        pc = self.make_pc("hero")
-        request = self.factory.get("/?action=landing")
-        request.user = pc.player.user
-        request.COOKIES["pc"] = str(pc.id)
-        view = DemoGameView()
-        response = view.get(request, nilpoint_slug=self.game.nilpoint_slug)
-        content = response.content.decode()
-        self.assertIn("demo-intro", content)
-        self.assertIn("A tiny world for tests", content)
-        self.assertNotIn("deck-debug", content)
+    def test_demo_uses_the_default_landing(self):
+        """The demo no longer overrides the landing: it uses nilpoint's.
 
-    def test_demo_landing_keeps_the_rule_driven_panels_live(self):
-        """The demo's landing copy subscribes the same state-dependent panels.
-
-        The scene and controls panels show rule-driven content (a
-        location's graphic and description, and the exits a character can
-        see), so both must re-request when per-player state changes -
-        otherwise a door the keypad just relocked would linger on screen.
+        The default landing carries the standard panels - including the
+        state-dependent scene/controls subscriptions that keep rule-driven
+        exits live - so a game writes its own landing only when it needs
+        extra UI the default does not have.
         """
         pc = self.make_pc("hero")
         request = self.factory.get("/?action=landing")
@@ -519,10 +506,14 @@ class DemoWiringTests(DemoGameTestCase):
             request, nilpoint_slug=self.game.nilpoint_slug
         ).content.decode()
 
-        for panel_id in ("nilpoint-scene", "nilpoint-controls"):
-            match = re.search(
-                rf'id="{panel_id}"\s+hx-get="[^"]*"\s+hx-trigger="([^"]*)"',
-                content,
-            )
-            self.assertIsNotNone(match, f"{panel_id} was not rendered")
-            self.assertIn("item_state_changed", match.group(1))
+        for panel_id in (
+            "nilpoint-character-panel",
+            "nilpoint-scene",
+            "nilpoint-controls",
+            "nilpoint-location-item-panel",
+            "nilpoint-inventory-panel",
+        ):
+            self.assertIn(f'id="{panel_id}"', content)
+        # The debug deck is parked (commented) in the default landing, so no
+        # game renders it until one opts into a landing of its own.
+        self.assertNotIn("deck-debug", content)

@@ -396,8 +396,9 @@ interaction action or take/drop (`item_state_changed`,
 moving/character events), so a door that opens or closes mid-session
 re-renders itself. This is also why a shipped generic gate like
 `RequiresPCState` needs no `Action` of its own: whatever writes the key
-it reads, the panel follows. A game that writes its own landing (as the
-demo does) must keep those `nilpoint_panel` triggers.
+it reads, the panel follows. A game that writes its own landing must keep
+those `nilpoint_panel` triggers (the demo runs on the default, so it has
+nothing to keep in sync).
 
 **Family validation.** Each model declares which family it accepts -
 `Exit` requires an `ExitInteraction`, `Location` a `LocationInteraction`
@@ -634,8 +635,8 @@ What it demonstrates, in the order its release steps build it:
 | `demo/interactions.py` - `Lamp`         | The simplest interaction: a `StateToggle` action on per-player `item_state`                                                                                                                                  |
 | `demo/interactions.py` - `Keypad`       | A custom `partial` (code-entry form while locked, standard buttons once unlocked), an `Action` subclass that reads request data, and a `can` gate that swaps the offered actions and is enforced server-side |
 | `demo/interactions.py` - `HiddenStoreroom` | The plainest exit rule: one hook reading the character's own state - the same single key the keypad's panel and actions read                                                                                    |
-| `demo/views.py`                         | Overriding the landing page by naming a different `landing_partial` - no handler code copied                                                                                                                 |
-| `demo/templates/demo/`                  | A landing partial and the keypad's panel partial                                                                                                                                                             |
+| `demo/views.py`                         | A game view is a bare `NilpointGameBasic` subclass - the demo uses the default landing as-is (its `landing_partial` override is left commented as the pointer for games that need extra UI)                     |
+| `demo/templates/demo/`                  | The keypad's panel partial (the demo has no landing of its own - the default serves it, and most games)                                                                                                      |
 
 To try it: add `nilpoint.demo` to `INSTALLED_APPS`, register
 `"demogame"` in `NILPOINT_SETTINGS` (games + archetypes pointing at
