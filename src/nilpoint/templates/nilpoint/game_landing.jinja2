@@ -2,36 +2,26 @@
 {% load nilpoint_tags %}
 {% partialdef landing %}
     <div id="nilpoint-game-container">
-        <h1>You are playing {{ game.instance_name }}</h1>
-        {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
-        {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
-        {% nilpoint_panel "nilpoint-controls" "get_player_location_panel" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
-        {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
-        {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
-        <div id="nilpoint-item-detail-panel"></div>
+        <div id="nilpoint-header">
+            <h1>You are playing {{ game.instance_name }}</h1>
+            {% nilpoint_panel "nilpoint-character-panel" "player_selection_panel" triggers="load, player_character_changed from:body" %}
+        </div>
+        <section id="nilpoint-location-group"
+                 aria-labelledby="nilpoint-location-group-title">
+            <h2 id="nilpoint-location-group-title" class="nilpoint-visually-hidden">Location</h2>
+            {% nilpoint_panel "nilpoint-scene" "get_location_graphic" triggers="load, player_location_changed from:body, player_character_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+            {% nilpoint_panel "nilpoint-location-description" "get_location_description" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+            {% nilpoint_panel "nilpoint-location-item-panel" "get_location_item_panel" triggers="load, player_character_changed from:body, location_items_changed from:body, player_location_changed from:body" %}
+            {% nilpoint_panel "nilpoint-exits" "get_location_exits" triggers="load, player_character_changed from:body, player_location_changed from:body, location_items_changed from:body, inventory_items_changed from:body, item_state_changed from:body" %}
+        </section>
+        <section id="nilpoint-character-group"
+                 aria-labelledby="nilpoint-character-group-title">
+            <h2 id="nilpoint-character-group-title" class="nilpoint-visually-hidden">Character</h2>
+            {% nilpoint_panel "nilpoint-inventory-panel" "get_inventory_panel" triggers="load, player_character_changed from:body, inventory_items_changed from:body" %}
+            <div id="nilpoint-item-detail-panel"></div>
+            {% include "nilpoint/log.jinja2" %}
+        </section>
         {# {% nilpoint_panel "deck-debug" "deck" triggers="load, player_character_changed from:body" %} #}
-        {# move the log into a partial to make reuse in games cleaner #}
-        <div id="nilpoint-log" aria-live="polite"></div>
-        <script>
-          if (!window.__nilpointLog) {
-            window.__nilpointLog = true;          // landing partial re-renders; avoid duplicate listeners
-            htmx.on("nilpoint_log", function (event) {
-              var messages = event.detail.messages;
-              if (!Array.isArray(messages)) {
-                return;                           // unexpected shape; nothing to display
-              }
-              messages.forEach(function (item) {
-                var entry = document.createElement("div");
-                entry.textContent = item.message || "";
-                entry.classList.add("nilpoint-log-entry");
-                if (item.level) {
-                  entry.classList.add(item.level);
-                }
-                document.getElementById("nilpoint-log").appendChild(entry);
-              });
-            });
-          }
-        </script>
     </div>
     {# nilpoint-game-container #}
 {% endpartialdef %}

@@ -399,11 +399,9 @@ class DemoWalkthroughTests(DemoGameTestCase):
         self.assertNotIn(door, hallway.exits.visible_to(sidekick))
 
         # And the exit list itself shows only what each character can see.
-        response = self._dispatch("get_player_location_panel", {}, method="get")
+        response = self._dispatch("get_location_exits", {}, method="get")
         self.assertIn("A plain door in the wall", response.content.decode())
-        response = self._dispatch(
-            "get_player_location_panel", {}, method="get", pc=sidekick
-        )
+        response = self._dispatch("get_location_exits", {}, method="get", pc=sidekick)
         self.assertNotIn("A plain door in the wall", response.content.decode())
 
         # The hero walks through; inside, the way back out is a plain exit.
@@ -421,9 +419,9 @@ class DemoWalkthroughTests(DemoGameTestCase):
         sidekick.refresh_from_db()
         self.assertEqual(sidekick.current_location.asset_id, "HALLWAY")
 
-    def _location_panel(self):
-        """The controls panel HTML: the exits a character can see right now."""
-        response = self._dispatch("get_player_location_panel", {}, method="get")
+    def _exits_panel(self):
+        """The exits panel HTML: the exits a character can see right now."""
+        response = self._dispatch("get_location_exits", {}, method="get")
         return response.content.decode()
 
     def test_relocking_the_keypad_closes_the_storeroom_door(self):
@@ -435,16 +433,16 @@ class DemoWalkthroughTests(DemoGameTestCase):
         # on the panel the player is actually looking at.
         self._walk_to_hallway()
         self.assertNotIn(door, hallway.exits.visible_to(self.pc))
-        self.assertNotIn("A plain door in the wall", self._location_panel())
+        self.assertNotIn("A plain door in the wall", self._exits_panel())
 
         # Unlocking lifts the latch, and the exits list shows it.
         self._interact(keypad, "unlock", code="1234")
         self.assertTrue(self.pc.item_state.get("storeroom_open"))
         self.assertIn(door, hallway.exits.visible_to(self.pc))
-        self.assertIn("A plain door in the wall", self._location_panel())
+        self.assertIn("A plain door in the wall", self._exits_panel())
 
         # Locking clears the one key the panel and the door both read.  The
-        # action also fires item_state_changed, which the controls panel
+        # action also fires item_state_changed, which the exits panel
         # subscribes to, so what the player sees cannot go stale.
         response = self._interact(keypad, "lock")
         self.assertEqual(
@@ -453,7 +451,7 @@ class DemoWalkthroughTests(DemoGameTestCase):
         self.assertIn("item_state_changed", response.htmx_triggers)
         self.assertIs(self.pc.item_state.get("storeroom_open"), False)
         self.assertNotIn(door, hallway.exits.visible_to(self.pc))
-        self.assertNotIn("A plain door in the wall", self._location_panel())
+        self.assertNotIn("A plain door in the wall", self._exits_panel())
 
         # The keypad's own panel agrees without a second state to consult.
         response = self._interact(keypad, method="get")
@@ -469,7 +467,7 @@ class DemoWalkthroughTests(DemoGameTestCase):
         # And the code works again from scratch.
         self._interact(keypad, "unlock", code="1234")
         self.assertIn(door, hallway.exits.visible_to(self.pc))
-        self.assertIn("A plain door in the wall", self._location_panel())
+        self.assertIn("A plain door in the wall", self._exits_panel())
 
 
 class DemoWiringTests(DemoGameTestCase):
@@ -493,7 +491,7 @@ class DemoWiringTests(DemoGameTestCase):
         """The demo no longer overrides the landing: it uses nilpoint's.
 
         The default landing carries the standard panels - including the
-        state-dependent scene/controls subscriptions that keep rule-driven
+        state-dependent scene/exits subscriptions that keep rule-driven
         exits live - so a game writes its own landing only when it needs
         extra UI the default does not have.
         """
@@ -509,9 +507,11 @@ class DemoWiringTests(DemoGameTestCase):
         for panel_id in (
             "nilpoint-character-panel",
             "nilpoint-scene",
-            "nilpoint-controls",
+            "nilpoint-location-description",
             "nilpoint-location-item-panel",
+            "nilpoint-exits",
             "nilpoint-inventory-panel",
+            "nilpoint-log",
         ):
             self.assertIn(f'id="{panel_id}"', content)
         # The debug deck is parked (commented) in the default landing, so no

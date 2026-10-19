@@ -46,14 +46,14 @@
         {% endif %}
     </div>
     <div class="nilpoint-item-detail-text">
-        <h1>{{ item.name }}</h1>
+        <h3>{{ item.name }}</h3>
         <p>{{ item.description }}</p>
         {# Interaction region: the interaction's partial always auto-loads into the panel div when the detail renders. #}
         {% if instance %}
             {% nilpoint_interaction_panel instance %}
         {% endif %}
         {% if debug %}
-            <h3>DEBUG</h3>
+            <h4>DEBUG</h4>
             {% if state %}
                 <p>has state: {{ state }}</p>
                 <p>{{ state.keys }}</p>

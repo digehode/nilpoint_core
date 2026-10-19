@@ -388,9 +388,9 @@ carries the named item.
 **Rule-driven panels stay live.** Because exits are judged on per-player
 state, the exits list on screen can go stale: unlock a door with a keypad
 and the list must grow, relock it and the list must shrink. The landing
-handles this with no per-game wiring - the scene and controls panels
-subscribe to the state-change events the engine already fires after any
-interaction action or take/drop (`item_state_changed`,
+handles this with no per-game wiring - the scene, description and exits
+panels subscribe to the state-change events the engine already fires
+after any interaction action or take/drop (`item_state_changed`,
 `inventory_items_changed`, `location_items_changed`, plus the
 moving/character events), so a door that opens or closes mid-session
 re-renders itself. This is also why a shipped generic gate like
@@ -433,11 +433,12 @@ response.add_trigger("location_items_changed")
 - `level` maps to a CSS class on the log entry: `success` (the
   default), `info`, or `error`. Feel free to send other classes, just
   make sure you add css to cover them in the browser.
-- The default landing page has a `#nilpoint-log` panel; a small script
-  listens for the `nilpoint_log` event that the response fires and
-  appends one entry per message. If you write your own landing page,
-  either steal the log script or do something else with it that makes
-  more sense for you.
+- The default landing gets the log from a partial: `nilpoint/log.jinja2`
+  holds the `#nilpoint-log` live region and the small script that listens
+  for the `nilpoint_log` event the response fires and appends one entry
+  per message. A game writing its own landing reuses it with
+  `{% include "nilpoint/log.jinja2" %}` - or does something else with the
+  messages that makes more sense for it.
 - The log is ephemeral - nothing is stored in the database. It survives HTMX
   round-trips (the panel lives in the landing partial) but is lost on a full
   page load. Each response starts with an empty buffer, so a message from one
@@ -544,7 +545,8 @@ class MyGameView(NilpointGameBasic):
     landing_partial = "mygame/landing.jinja2#landing"
     overview_partial = "mygame/overview.jinja2#overview"
     location_graphic_partial = "mygame/location_graphic.jinja2#location_graphic"
-    player_location_panel = "mygame/player_location.jinja2#player_location_panel"
+    location_description_partial = "mygame/location_description.jinja2#location_description"
+    location_exits_partial = "mygame/exits.jinja2#exits"
     location_item_panel = "mygame/location_items.jinja2#location_item_panel"
     item_detail_partial = "mygame/item_detail.jinja2#item_detail"
     new_player_character_partial = "mygame/new_pc.jinja2#new_player_character"
@@ -563,7 +565,8 @@ string.
 | `handle_landing`                   | `landing_partial`                                              | `nilpoint/game_landing.jinja2#landing`                        |
 | `handle_overview`                  | `overview_partial`                                             | `nilpoint/game_overview.jinja2#game_overview`                 |
 | `handle_get_location_graphic`      | `location_graphic_partial`                                     | `nilpoint/location_panel.jinja2#location_graphic`             |
-| `handle_get_player_location_panel` | `player_location_panel`                                        | `nilpoint/player_location_panel.jinja2#player_location_panel` |
+| `handle_get_location_description`  | `location_description_partial`                                 | `nilpoint/location_description_panel.jinja2#location_description` |
+| `handle_get_location_exits`        | `location_exits_partial`                                       | `nilpoint/exits_panel.jinja2#exits`                           |
 | `handle_get_location_item_panel`   | `location_item_panel`                                          | `nilpoint/location_item_panel.jinja2#location_item_panel`     |
 | `handle_get_inventory_panel`       | `inventory_panel`                                              | `nilpoint/inventory_item_panel.jinja2#inventory_panel`        |
 | `handle_item_detail`               | `item_detail_partial` (the content inside the refresh wrapper) | `nilpoint/item_detail_panel.jinja2#item_detail_content`       |

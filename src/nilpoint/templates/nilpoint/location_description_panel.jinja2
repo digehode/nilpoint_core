@@ -1,0 +1,10 @@
+{% load static i18n %}
+{% load nilpoint_tags %}
+{% partialdef location_description %}
+    {% if player_character.current_location %}
+        <h3>{{ player_character.current_location.name }}</h3>
+        <p>{{ player_character.current_location|description_for:player_character }}</p>
+    {% else %}
+        <p>No player/location</p>
+    {% endif %}
+{% endpartialdef %}

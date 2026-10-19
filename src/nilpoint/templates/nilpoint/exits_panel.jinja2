@@ -1,0 +1,16 @@
+{% load static i18n %}
+{% load nilpoint_tags %}
+{% partialdef exits %}
+    <h3>Exits</h3>
+    {% if player_character.current_location %}
+        <ul id="nilpoint-exits-list">
+            {% for e in player_character.current_location|visible_exits:player_character %}
+                <li>{% nilpoint_action e.name "use_exit" method="POST" exit=e.id %}</li>
+            {% empty %}
+                <li>None</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No player/location</p>
+    {% endif %}
+{% endpartialdef %}

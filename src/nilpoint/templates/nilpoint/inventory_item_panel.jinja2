@@ -1,7 +1,7 @@
 {% load static i18n %}
 {% load nilpoint_tags %}
 {% partialdef inventory_panel %}
-    <h1>Inventory</h1>
+    <h3>Inventory</h3>
     <ul id="nilpoint-inventory-list">
         {% for inventory_item in player_character.inventory_items.all %}
             <li>

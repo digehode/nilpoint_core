@@ -139,7 +139,8 @@ class NilpointGameBasic(View):
         "select_player_character": "handle_select_player_character",
         "player_selection_panel": "handle_player_selection_panel",
         "get_location_graphic": "handle_get_location_graphic",
-        "get_player_location_panel": "handle_get_player_location_panel",
+        "get_location_description": "handle_get_location_description",
+        "get_location_exits": "handle_get_location_exits",
         "use_exit": "handle_use_exit",
         "get_location_item_panel": "handle_get_location_item_panel",
         "get_inventory_panel": "handle_get_inventory_panel",
@@ -449,16 +450,31 @@ class NilpointGameBasic(View):
         return self.nilpoint_render(request, partial, context, *args, **kwargs)
 
     @require_http_methods("GET")
-    def handle_get_player_location_panel(self, request, *args, **kwargs):
-        """Return the content of the location control panel
+    def handle_get_location_description(self, request, *args, **kwargs):
+        """Return the location's name and description for this character.
 
-        - Override player_location_panel used to render the content for custom responses
+        - Override location_description_partial used to render the content for custom responses
 
         """
         context = {}
         partial = self._value_from_subclass_or_default(
-            "player_location_panel",
-            "nilpoint/player_location_panel.jinja2#player_location_panel",
+            "location_description_partial",
+            "nilpoint/location_description_panel.jinja2#location_description",
+        )
+
+        return self.nilpoint_render(request, partial, context, *args, **kwargs)
+
+    @require_http_methods("GET")
+    def handle_get_location_exits(self, request, *args, **kwargs):
+        """Return the list of exits this character can currently see.
+
+        - Override location_exits_partial used to render the content for custom responses
+
+        """
+        context = {}
+        partial = self._value_from_subclass_or_default(
+            "location_exits_partial",
+            "nilpoint/exits_panel.jinja2#exits",
         )
 
         return self.nilpoint_render(request, partial, context, *args, **kwargs)

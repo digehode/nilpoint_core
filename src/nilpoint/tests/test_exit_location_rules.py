@@ -510,9 +510,9 @@ class RuleDrivenPanelReloadTests(TwoRoomWorld):
 
     Exit visibility and a location's description/graphic are judged from
     per-player state - which any interaction action, or a take/drop, can
-    write.  The landing subscribes the scene and controls panels to the
-    events those changes fire, so a door that opens or closes mid-session
-    is never left stale: the exits list re-requests itself.
+    write.  The landing subscribes the scene, description and exits panels
+    to the events those changes fire, so a door that opens or closes
+    mid-session is never left stale: the exits list re-requests itself.
 
     This is engine wiring rather than per-game wiring on purpose: the
     shipped `RequiresPCState`/`HasItem` gates have no action of their own
@@ -546,9 +546,15 @@ class RuleDrivenPanelReloadTests(TwoRoomWorld):
         self.assertIsNotNone(match, f"{panel_id} was not rendered")
         return match.group(1)
 
-    def test_controls_panel_reloads_when_player_state_changes(self):
+    def test_exits_panel_reloads_when_player_state_changes(self):
         """The exits list follows state written by any action or take/drop."""
-        triggers = self._panel_triggers("nilpoint-controls")
+        triggers = self._panel_triggers("nilpoint-exits")
+        for event in self.STATE_EVENTS:
+            self.assertIn(event, triggers)
+
+    def test_description_panel_reloads_when_player_state_changes(self):
+        """The description reads the same state the exits list does."""
+        triggers = self._panel_triggers("nilpoint-location-description")
         for event in self.STATE_EVENTS:
             self.assertIn(event, triggers)
 
@@ -557,3 +563,91 @@ class RuleDrivenPanelReloadTests(TwoRoomWorld):
         triggers = self._panel_triggers("nilpoint-scene")
         for event in self.STATE_EVENTS:
             self.assertIn(event, triggers)
+
+
+class LandingStructureTests(TwoRoomWorld):
+    """The default landing's grouping and heading hierarchy.
+
+    The landing is two groups - location (scene, description, items,
+    exits) then character (inventory, item detail, log) - under a header
+    row, so layout is pure CSS over stable ids and a game writes its own
+    landing only for structural changes.  One h1 (the game title), group
+    titles as visually-hidden h2s, panel headings as h3s: a screen reader
+    gets a hierarchy instead of five competing h1s.
+    """
+
+    def _landing(self):
+        """A view wired up against the default game, request included."""
+        request = self.factory.get("/?action=landing")
+        request.user = self.user
+        request.COOKIES["pc"] = str(self.pc.id)
+
+        view = NilpointGameBasic()
+        view.setup(request)
+        view.game = self.game
+        view.player = self.player
+        view.player_characters = [self.pc]
+        view.player_character = self.pc
+        return view, request
+
+    def _landing_html(self):
+        view, request = self._landing()
+        return view.handle_landing(request).content.decode()
+
+    def _assert_inside(self, content, outer_id, inner_id):
+        """One element with `inner_id` sits inside the element with `outer_id`."""
+        outer = content.index(f'id="{outer_id}"')
+        inner = content.index(f'id="{inner_id}"')
+        close = content.index("</section>", outer)
+        self.assertTrue(outer < inner < close, f"{inner_id} is not inside {outer_id}")
+
+    def test_panels_are_grouped_into_location_and_character(self):
+        content = self._landing_html()
+
+        for panel_id in (
+            "nilpoint-scene",
+            "nilpoint-location-description",
+            "nilpoint-location-item-panel",
+            "nilpoint-exits",
+        ):
+            self._assert_inside(content, "nilpoint-location-group", panel_id)
+        for panel_id in (
+            "nilpoint-inventory-panel",
+            "nilpoint-item-detail-panel",
+            "nilpoint-log",
+        ):
+            self._assert_inside(content, "nilpoint-character-group", panel_id)
+
+    def test_the_landing_has_one_h1_and_hidden_group_titles(self):
+        content = self._landing_html()
+
+        self.assertEqual(content.count("<h1"), 1)
+        for title in ("Location", "Character"):
+            self.assertIn(
+                f'<h2 id="nilpoint-{title.lower()}-group-title"'
+                f' class="nilpoint-visually-hidden">{title}</h2>',
+                content,
+            )
+        self.assertIn('aria-labelledby="nilpoint-location-group-title"', content)
+        self.assertIn('aria-labelledby="nilpoint-character-group-title"', content)
+
+    def test_panel_headings_are_h3s(self):
+        """The name, exits and inventory headings sit under the group h2."""
+        view, request = self._landing()
+
+        description = view.handle_get_location_description(request)
+        self.assertIn("<h3>Room A</h3>", description.content.decode())
+
+        exits = view.handle_get_location_exits(request)
+        self.assertIn("<h3>Exits</h3>", exits.content.decode())
+
+        inventory = view.handle_get_inventory_panel(request)
+        self.assertIn("<h3>Inventory</h3>", inventory.content.decode())
+
+    def test_the_log_is_a_live_region_with_its_listener(self):
+        content = self._landing_html()
+
+        self.assertIn('id="nilpoint-log"', content)
+        self.assertIn('role="log"', content)
+        self.assertIn('aria-live="polite"', content)
+        self.assertIn("window.__nilpointLog", content)
