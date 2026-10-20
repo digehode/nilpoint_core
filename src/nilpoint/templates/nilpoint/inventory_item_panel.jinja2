@@ -2,19 +2,15 @@
 {% load nilpoint_tags %}
 {% partialdef inventory_panel %}
     <h3 class="nilpoint-panel-label">Inventory</h3>
-    <ul id="nilpoint-inventory-list">
-        {% for inventory_item in player_character.inventory_items.all %}
-            <li>
-                {% include "nilpoint/item_detail_panel.jinja2#item_icon" %}
-                {{ inventory_item.item.name }}
-                {% nilpoint_action "Detail" "item_detail" inventory_item=inventory_item.id target="#nilpoint-item-detail-panel" %}
-                {% if inventory_item.item.can_drop %}
-                    {# here we request the drop but rely on the trigger to update the panel, not the content of the request return.   #}
-                    {% nilpoint_action "Drop" "drop_item" method="POST" inventory_item=inventory_item.id swap="none" %}
-                {% endif %}
-            </li>
-        {% empty %}
-            <li>None</li>
-        {% endfor %}
-    </ul>
+    {% with items=player_character.inventory_items.all %}
+        {% if items %}
+            <ul id="nilpoint-inventory-list">
+                {% for inventory_item in items %}
+                    {% include "nilpoint/item_card.jinja2#item_card" with card_item=inventory_item %}
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="nilpoint-empty-state">You are carrying nothing of note at the moment.</p>
+        {% endif %}
+    {% endwith %}
 {% endpartialdef %}

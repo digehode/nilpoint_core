@@ -5,6 +5,12 @@ subtitle: A Django engine for building adventure and narrative web games
 
 # Nilpoint
 
+## TODO
+
+Refactor this into multiple docs. This has mostly become a development
+log/guide.  Maybe just start again and port over what I want in README
+and see what's left?
+
 ## Introduction
 
 Nilpoint is an adventure game engine for Django. It allows the
@@ -551,6 +557,46 @@ is; an `InventoryItem` is always accessible). Override
 anything else, such as an item that evaporates, a container that
 locks, and so on.  `item_detail_partial` names the content rendered
 inside that refresh wrapper.
+
+### Item cards
+
+The location and inventory panels render each item through one shared
+partial, `nilpoint/item_card.jinja2#item_card`, so a room item and a carried
+item cannot drift apart. `card_item` is the `LocationItem` or the
+`InventoryItem`; the card reads the record rather than its class.
+
+A card is a small fixed-size tile that wraps in a `flex-wrap` row, so a panel
+shows several per line and never scrolls sideways. The picture fills the whole
+tile (`object-fit: cover` - it keeps its aspect ratio and the excess is cropped,
+which is enough for a picture that only has to be recognisable), and both bars
+are overlaid on it: the name across the top, the actions across the foot. The
+bars add no height of their own, which is what keeps the tile small; Inspect
+opens the real detail for anyone who needs a clearer look. The action bar is
+near-transparent - the buttons carry their own contrast - with only a short
+scrim at the very bottom so a bright picture cannot swallow them.
+
+The action bar always holds **Inspect** on the left, which is the `item_detail`
+action (only the label changed) and targets `#nilpoint-item-detail-panel` as
+before. On the right sits the movement verb: **Take** when the record is a
+`LocationItem` and the item's `can_take` allows it, **Drop** when it is an
+`InventoryItem` and `can_drop` allows it. A move is a POST (with the record's id
+in `hx-vals`, written inline as the README's other templates do) that swaps
+nothing - the panel reloads itself off the change triggers it already listens
+to. The card carries no interaction controls: those live in the item detail
+panel, unchanged.
+
+Both buttons are real `<button>`s carrying an icon and a text label; the glyph
+is `aria-hidden` so assistive tech reads the label alone. The glyph sits above
+its label inside each button, which keeps the button tall and narrow and lets
+two of them share a small tile without shortening either word. The card caps its
+own width below `--nilpoint-item-card-min-width` and takes its own line rather
+than clipping a label or pushing the page wide. Every tone comes from
+`--nilpoint-item-card-*` custom properties in `nilpoint.css`, so a game
+retints the tiles in its own stylesheet (Cypherpunk's green edge reaches them
+through `--nilpoint-panel-border` with no extra rules). A panel with nothing in
+it says so in copy - "There are no items you can investigate here" / "You are
+carrying nothing of note at the moment." - as a `p.nilpoint-empty-state`
+outside the list rather than a `None` row.
 
 ## Game archetypes and model overrides
 

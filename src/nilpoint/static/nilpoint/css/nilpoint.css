@@ -92,7 +92,7 @@
        themes, so the panels read as panels in light and dark mode alike.
        light-dark() follows the color-scheme Pico sets on :root, including a
        host's data-theme toggle. */
-    --nilpoint-panel-border: light-dark(#808a9c, #5b6472);
+    --nilpoint-panel-border: light-dark(#808a9c, #6a7382);
     --nilpoint-panel-border-width: 1px;
     --nilpoint-panel-radius: var(--pico-border-radius, 0.25rem);
     --nilpoint-panel-padding: 1rem;
@@ -122,6 +122,51 @@
     --nilpoint-item-slot-bg: light-dark(
         rgba(16, 24, 40, 0.05),
         rgba(255, 255, 255, 0.07)
+    );
+
+    /* Item cards: the tiles in the location and inventory panels. Made
+       this small, but probably later want to make it even
+       tighter/smaller. The picture only has to be recognisable, and
+       Inspect opens the real detail. */
+    --nilpoint-item-card-width: 7rem;
+    --nilpoint-item-card-min-width: 6rem;
+    --nilpoint-item-card-height: 8rem;
+    --nilpoint-item-card-gap: 0.5rem;
+    --nilpoint-item-card-radius: calc(var(--nilpoint-panel-radius) * 1.25);
+    /* The tile reads as a tile against the panel behind it. */
+    --nilpoint-item-card-bg: light-dark(#ffffff, #1f2430);
+    --nilpoint-item-card-media-bg: light-dark(#eaeef4, #12161f);
+    /* The name sits over the artwork, so it carries its own backdrop: opaque
+       enough that it stays readable over any picture underneath. */
+    --nilpoint-item-card-title-bg: light-dark(
+        rgba(247, 248, 250, 0.88),
+        rgba(23, 27, 36, 0.88)
+    );
+    --nilpoint-item-card-title-color: light-dark(#1e222a, #f0f2f6);
+    /* The action bar is nearly transparent - the buttons carry their own
+       contrast - with just enough of a scrim at the foot of the picture that a
+       bright image cannot swallow them. */
+    --nilpoint-item-card-footer-scrim: linear-gradient(
+        to top,
+        light-dark(rgba(16, 24, 40, 0.42), rgba(0, 0, 0, 0.55)),
+        transparent
+    );
+    /* The buttons stay solid so they read against any artwork: a translucent
+       fill would let a busy picture show through the label. */
+    --nilpoint-item-card-action-bg: light-dark(
+        rgba(255, 255, 255, 0.92),
+        rgba(38, 44, 56, 0.94)
+    );
+    --nilpoint-item-card-action-bg-hover: light-dark(#dfe5ee, #313848);
+    --nilpoint-item-card-action-color: light-dark(#1e222a, #f0f2f6);
+    /* Strong enough to draw the button's shape (3:1 against its own fill). */
+    --nilpoint-item-card-action-border: light-dark(#7d8798, #767f8e);
+    /* How far the tile lifts when hovered - small enough not to annoy when
+       going back for the buttons. */
+    --nilpoint-item-card-lift: -2px;
+    --nilpoint-item-card-glow: light-dark(
+        0 6px 16px rgba(16, 24, 40, 0.16),
+        0 6px 16px rgba(0, 0, 0, 0.55)
     );
 
     /* HUD labels: the small uppercase headings on the list panels. */
@@ -415,10 +460,187 @@
     }
 }
 
+/* ------- Item cards -------
+   One tile for an item currently used used by both list panels (location items and inventory) currently.
+*/
+
+#nilpoint-item-list,
+#nilpoint-inventory-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--nilpoint-item-card-gap);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.nilpoint-item-card {
+    position: relative;
+    display: flex;
+    flex: 0 1 var(--nilpoint-item-card-width);
+    flex-direction: column;
+    min-width: min(100%, var(--nilpoint-item-card-min-width));
+    height: var(--nilpoint-item-card-height);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    list-style: none;
+    background-color: var(--nilpoint-item-card-bg);
+    border: var(--nilpoint-panel-border-width) solid
+        var(--nilpoint-panel-border);
+    border-radius: var(--nilpoint-item-card-radius);
+    box-shadow: var(--nilpoint-panel-shadow);
+    transition:
+        transform 140ms ease,
+        box-shadow 140ms ease;
+}
+
+/* The artwork fills the tile? */
+.nilpoint-item-card-media {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--nilpoint-item-card-media-bg);
+}
+
+.nilpoint-item-card-graphic {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+/* The name, as a translucent bar overlapping the top of the artwork. */
+.nilpoint-item-card-title {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    margin: 0;
+    padding: 0.25rem 0.4rem;
+    overflow: hidden;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    color: var(--nilpoint-item-card-title-color);
+    background-color: var(--nilpoint-item-card-title-bg);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--nilpoint-panel-border);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The action bar is overlaid on the foot of the artwork and adds no height of
+   its own, so the picture keeps the whole tile. It is mostly transparent: the
+   buttons should be pretty clear on their own.. */
+.nilpoint-item-card-footer {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 1;
+    display: flex;
+    gap: 0.25rem;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin: 0;
+    padding: 1.25rem 0.3rem 0.3rem;
+    background-image: var(--nilpoint-item-card-footer-scrim);
+}
+
+.nilpoint-item-card-action {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.05em;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 1.5rem;
+    margin: 0;
+    padding: 0.2rem 0.3rem;
+    overflow: hidden;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--nilpoint-item-card-action-color);
+    background-color: var(--nilpoint-item-card-action-bg);
+    border: var(--nilpoint-panel-border-width) solid
+        var(--nilpoint-item-card-action-border);
+    border-radius: calc(var(--nilpoint-item-card-radius) - 2px);
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease;
+}
+
+.nilpoint-item-card-glyph {
+    flex: 0 0 auto;
+    font-size: 0.95em;
+    line-height: 1;
+}
+
+.nilpoint-item-card-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nilpoint-item-card-action:hover {
+    background-color: var(--nilpoint-item-card-action-bg-hover);
+    border-color: var(--nilpoint-panel-border);
+}
+
+.nilpoint-item-card-action:active {
+    transform: translateY(1px);
+}
+
+.nilpoint-item-card-action:focus-visible {
+    outline: 2px solid var(--pico-primary-focus, var(--nilpoint-action-accent));
+    outline-offset: 2px;
+}
+
+/* Lift and glow: only where the pointer can actually hover, so a touch device
+   never gets a tile that sticks half-lifted. */
+@media (hover: hover) and (pointer: fine) {
+    .nilpoint-item-card:hover {
+        z-index: 1;
+        transform: translateY(var(--nilpoint-item-card-lift));
+        box-shadow:
+            var(--nilpoint-panel-shadow), var(--nilpoint-item-card-glow);
+    }
+}
+
+/* A panel with nothing in it says so, in a line of copy rather than a row with
+   "None" in it. */
+.nilpoint-empty-state {
+    margin: 0.25rem 0 0;
+    font-size: 0.9rem;
+    color: var(--pico-muted-color, #646b79);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nilpoint-item-card,
+    .nilpoint-item-card-action {
+        transition: none;
+    }
+
+    .nilpoint-item-card:hover {
+        transform: none;
+    }
+
+    .nilpoint-item-card-action:active {
+        transform: none;
+    }
+}
+
 /* ------- Log entries -------
    Neutral default: the level shows as a small glyph and an accent edge (and a
    tint on errors), not a colour scheme alone. Games theme the log through
-   CSS. */
+   CSS. See cypherpunnkl for example. */
 
 .nilpoint-log-entry {
     position: relative;
@@ -427,7 +649,7 @@
     word-break: break-word;
 }
 
-/* One glyph per level, so the level survives a greyscale screenshot and is
+/* One glyph per level, so the level survives a greyscale screenshot/mono mode and is
    not carried by colour alone. */
 .nilpoint-log-entry::before {
     content: "›";
@@ -471,7 +693,7 @@
 
 /* ------- HUD labels -------
    The small uppercase heading on a list panel, with a rule running out to the
-   panel edge. Set on the h3 so the heading hierarchy is unchanged. */
+   panel edge. Set on the h3 so the heading hierarchy still good. */
 
 .nilpoint-panel-label {
     display: flex;
@@ -494,9 +716,10 @@
 }
 
 /* ------- Interaction buttons -------
-   The buttons an interaction renders from its available actions. Neutral by
-   default (the host's primary colour); games retint via
-   --nilpoint-action-accent / --nilpoint-action-glow. */
+The buttons an interaction renders from its available actions. Neutral
+   by default (the host's primary colour); games retint via
+   --nilpoint-action-accent / --nilpoint-action-glow. Probably more
+   faff here than needed but it looks nice. */
 
 .nilpoint-interact-actions {
     display: flex;
@@ -561,14 +784,8 @@
         url("/static/nilpoint/nilpoint-glyph.svg") no-repeat center / contain;
 }
 
-/* Take/Drop action links in item lists */
-.nilpoint-item-action-link {
-    display: inline;
-    margin-left: 0.5rem;
-    font-size: 0.8rem;
-    padding: 0.2rem 0.5rem;
-}
-
+/* The icon's frame, used by the item detail and the (now unused) item_icon
+   partial. */
 .nilpoint-inventory-slot {
     width: 1.5rem;
     height: 1.5rem;

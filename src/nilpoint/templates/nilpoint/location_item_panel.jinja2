@@ -3,21 +3,17 @@
 {% partialdef location_item_panel %}
     {% if player_character.current_location %}
         <h3 class="nilpoint-panel-label">Items</h3>
-        <ul id="nilpoint-item-list">
-            {% for location_item in player_character.items_at.all %}
-                <li>
-                    {% include "nilpoint/item_detail_panel.jinja2#item_icon" %}
-                    {{ location_item.item.name }}
-                    {% nilpoint_action "Detail" "item_detail" location_item=location_item.id target="#nilpoint-item-detail-panel" %}
-                    {% if location_item.item.can_take %}
-                        {# don't swap. The trigger on a successful take will pick up a need to request the panel content #}
-                        {% nilpoint_action "Take" "take_item" method="POST" location_item=location_item.id swap="none" %}
-                    {% endif %}
-                </li>
-            {% empty %}
-                <li>None</li>
-            {% endfor %}
-        </ul>
+        {% with items=player_character.items_at.all %}
+            {% if items %}
+                <ul id="nilpoint-item-list">
+                    {% for location_item in items %}
+                        {% include "nilpoint/item_card.jinja2#item_card" with card_item=location_item %}
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="nilpoint-empty-state">There are no items you can investigate here</p>
+            {% endif %}
+        {% endwith %}
     {% else %}
         <p>No player/location</p>
     {% endif %}

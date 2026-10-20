@@ -1,0 +1,79 @@
+{% load static %}
+{% load nilpoint_tags %}
+{% partialdef item_card %}
+    {% comment %}
+One item tile, drawn by both the location and the inventory panel so the
+two cannot drift apart.
+
+    `card_item` is the LocationItem or the InventoryItem. The card
+    reads the record rather than its class: `is_in_inventory` picks
+    wording (Drop or Take) and the item's own `can_drop` / `can_take`
+    decides whether it is offered at all. Inspect is always first in
+    the footer and always the same `item_detail` action
+    {% endcomment %}
+    <li class="nilpoint-item-card">
+        <div class="nilpoint-item-card-media">
+            <img class="nilpoint-item-card-graphic"
+                 src="{% static card_item.item.graphic_safe %}"
+                 alt=""
+                 width="64"
+                 height="64"
+                 loading="lazy">
+            {% comment %}
+		 A bar, not a heading: the panel's h3 is the only
+		 heading, and the name is the card's own visible text next to its
+		 buttons. More like li elements than headings. Seems best.
+            {% endcomment %}
+            <p class="nilpoint-item-card-title">{{ card_item.item.name }}</p>
+        </div>
+        <div class="nilpoint-item-card-footer">
+            {% if card_item.is_in_inventory %}
+                {% nilpoint_action_url game 'item_detail' inventory_item=card_item.id as inspect_url %}
+            {% else %}
+                {% nilpoint_action_url game 'item_detail' location_item=card_item.id as inspect_url %}
+            {% endif %}
+            <button type="button"
+                    class="nilpoint-item-card-action nilpoint-item-card-action--inspect"
+                    hx-get="{{ inspect_url }}"
+                    hx-target="#nilpoint-item-detail-panel"
+                    hx-swap="innerHTML">
+                <span class="nilpoint-item-card-glyph" aria-hidden="true">🔍</span>
+                <span class="nilpoint-item-card-label">Inspect</span>
+            </button>
+            {% if card_item.is_in_inventory %}
+                {% if card_item.item.can_drop %}
+                    {% include "nilpoint/item_card.jinja2#item_move_action" with move_action="drop_item" move_key="inventory_item" move_id=card_item.id move_label="Drop" move_glyph="⬇" %}
+                {% endif %}
+            {% else %}
+                {% if card_item.item.can_take %}
+                    {% include "nilpoint/item_card.jinja2#item_move_action" with move_action="take_item" move_key="location_item" move_id=card_item.id move_label="Take" move_glyph="✋" %}
+                {% endif %}
+            {% endif %}
+        </div>
+    </li>
+{% endpartialdef %}
+{% partialdef item_move_action %}
+    {% comment %}
+    The card's right-hand action: Take in the world, Drop in the inventory.
+    `move_vals` is the JSON htmx sends with the POST: the record's id under the
+    name its handler reads (`location_item` / `inventory_item`). The panel
+    reloads itself off the change triggers rather than off this response, hence
+    swap="none".
+
+    `hx-vals` is written by hand, so two template traps apply. The attribute is
+    single-quoted because JSON needs double quotes around its keys, and a
+    single-quoted attribute carries them without escaping. And a space sits
+    between the value and the closing brace: a `{{ }}` tag flush against a
+    literal `}` reads as `}}}` to Django's lexer and renders an extra brace,
+    which is invalid JSON that htmx drops in silence.
+    {% endcomment %}
+    {% nilpoint_action_url game move_action as move_url %}
+    <button type="button"
+            class="nilpoint-item-card-action nilpoint-item-card-action--move"
+            hx-post="{{ move_url }}"
+            hx-vals='{"{{ move_key }}": {{ move_id }} }'
+            hx-swap="none">
+        <span class="nilpoint-item-card-glyph" aria-hidden="true">{{ move_glyph }}</span>
+        <span class="nilpoint-item-card-label">{{ move_label }}</span>
+    </button>
+{% endpartialdef %}

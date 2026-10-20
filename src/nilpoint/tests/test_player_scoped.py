@@ -236,7 +236,9 @@ class InventoryPanelViewTests(TestCase):
 
         response = self._render_inventory_panel(user3, pc3)
         content = response.content.decode()
-        self.assertIn("None", content)
+        # The panel says so in copy; the card list is not drawn at all.
+        self.assertIn("You are carrying nothing of note at the moment.", content)
+        self.assertNotIn('<li class="nilpoint-item-card">', content)
         self.assertIn("Inventory", content)
 
     def test_inventory_panel_template_direct_render(self):
