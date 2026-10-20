@@ -194,7 +194,10 @@
     --nilpoint-description-min-height: 5rem;
     --nilpoint-list-min-height: 10rem;
     --nilpoint-detail-min-height: 14rem;
-    --nilpoint-log-min-height: 12rem;
+    /* The log is born at its final height and only scrolls internally, so
+       it never grows to a ceiling and never resizes the row. ~Half the
+       old 12-28rem max, since it now carries a full-width line. */
+    --nilpoint-log-height: clamp(7rem, 28vh, 14rem);
 
     /* Log level accents: readable on light and dark backgrounds alike. */
     --nilpoint-log-entry-info: light-dark(#5c6b7d, #93a4b8);
@@ -228,8 +231,9 @@
 /* ------- Layout -------
    The landing is a header row over two groups: location (scene,
    description, then items and exits side by side) and character
-   (inventory, item detail, log).  Stacked by default; wide screens get
-   the side-by-side rows. */
+   (inventory and item detail side by side, log on its own full-width
+   row below them).  Stacked by default; wide screens get the
+   side-by-side rows. */
 
 /* The console frame: one wrapper around the game container. Core's default is
    a plain theme-adaptive panel; a game restyles it through the
@@ -285,17 +289,27 @@
     }
 }
 
+/* The log always spans the group: full width when stacked, and its own
+   row under the inventory/detail pair on wide screens. A full-width
+   transcript reads like the terminal it is instead of wrapping every
+   entry after a few words. */
+#nilpoint-log {
+    grid-column: 1 / -1;
+}
+
 @media (min-width: 1024px) {
     #nilpoint-character-group {
-        grid-template-columns: 1fr 2fr 1fr;
+        grid-template-columns: 1fr 1fr;
     }
 }
 
-/* Every panel box carries .nilpoint-panel - the shared styling hook. Core's
-   frame lives here, so a game restyles every screen at once by targeting this
-   class (Cypherpunk turns them into recessed, glowing screens). The loading
-   indicator shrinks so it fits inside the reserved heights. */
+/* Every panel box carries .nilpoint-panel - the shared styling
+   hook. Core's frame lives here, so a game restyles every screen at
+   once by targeting this class. `position: relative` anchors the
+   loading indicator, which is absolutely positioned so it occupies no
+   layout space (see below). */
 .nilpoint-panel {
+    position: relative;
     border: var(--nilpoint-panel-border-width) solid
         var(--nilpoint-panel-border);
     border-radius: var(--nilpoint-panel-radius);
@@ -304,15 +318,38 @@
     box-shadow: var(--nilpoint-panel-shadow);
 }
 
+/* put the loading indictor in the centre, not taking up space. Nice indication without causing th epage to jump as it appears/disappears.  */
 #nilpoint-game-container img.htmx-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
     width: 2rem;
     height: 2rem;
+    margin: -1rem 0 0 -1rem;
+    pointer-events: none;
 }
 
-/* Scene: aspect ratio reserves the space before the graphic arrives. It is a
-   framed viewport: the graphic fills it and the location name sits on it as a
-   caption, so the name and the picture are one object rather than two
-   separate panels. */
+/* also stop pico's rule from unwrapping and making stuff mnove */
+.nilpoint-panel[aria-busy="true"] {
+    white-space: normal;
+}
+
+#nilpoint-game-container .nilpoint-panel[aria-busy="true"]::before {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    margin: -0.5em 0 0 -0.5em;
+    pointer-events: none;
+}
+
+/* Scene: aspect ratio reserves the space before the graphic
+   arrives. It is a framed viewport: the graphic fills it and the
+   location name sits on it as a caption, so the name and the picture
+   are one object rather than two separate panels. This may need to
+   change. The picture is important but takes up a lot of space
+   pushing controls down. This is a TODO for later*/
 #nilpoint-scene {
     position: relative;
     overflow: hidden;
@@ -375,11 +412,12 @@
     scrollbar-gutter: stable;
 }
 
-/* The log fills its row and scrolls inside itself; the stable gutter
-   keeps entries from shifting when the scrollbar appears. */
+/* The log is a fixed-height terminal: born at its final size, it scrolls
+   inside itself rather than growing to a ceiling, so the row never moves.
+   The stable gutter keeps entries from shifting when the scrollbar
+   appears. */
 #nilpoint-log {
-    min-height: var(--nilpoint-log-min-height);
-    max-height: clamp(12rem, 50vh, 28rem);
+    height: var(--nilpoint-log-height);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: stable;

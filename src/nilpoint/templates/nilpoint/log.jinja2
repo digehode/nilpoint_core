@@ -13,6 +13,11 @@
       if (!Array.isArray(messages)) {
         return;                           // unexpected shape; nothing to display
       }
+      var logEl = document.getElementById("nilpoint-log");
+      // Pin-to-bottom: follow new entries only when the reader is already
+      // near the end, so scrolling up to read history isn't interrupted.
+      // Checked once before appending, so a batch moves it a single time.
+      var pinned = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 48;
       messages.forEach(function (item) {
         var entry = document.createElement("div");
         entry.textContent = item.message || "";
@@ -20,8 +25,11 @@
         if (item.level) {
           entry.classList.add(item.level);
         }
-        document.getElementById("nilpoint-log").appendChild(entry);
+        logEl.appendChild(entry);
       });
+      if (pinned) {
+        logEl.scrollTop = logEl.scrollHeight;
+      }
     });
   }
 </script>
