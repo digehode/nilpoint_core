@@ -78,6 +78,10 @@
     .nilpoint-interact-action {
         transition: none;
     }
+
+    #nilpoint-game-container [aria-busy="true"]::before {
+        animation: none;
+    }
 }
 
 /* ------- Tokens -------
@@ -199,6 +203,10 @@
        old 12-28rem max, since it now carries a full-width line. */
     --nilpoint-log-height: clamp(7rem, 28vh, 14rem);
 
+    /* The panel loading mark: the nilpoint logo, inlined as a data URI so it
+       loads with the stylesheet */
+    --nilpoint-loading-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 33.875404 25.813913'%3E%3Cpath transform='translate(-0.27311719,0.25194956)' style='fill:%23ffffff;fill-opacity:1;stroke:%23000000;stroke-width:0.694;stroke-linecap:square;stroke-linejoin:round;paint-order:stroke fill markers' d='m 12.84366,0.09508464 c -2.333367,0 -4.4153359,0.43168815 -6.2461299,1.29552816 -1.830796,0.82784 -3.2850686,2.1777152 -4.3620076,4.0493652 -1.076938,1.83566 -1.61540531,4.1934933 -1.61540531,7.072953 0,2.37555 0.41251431,4.516774 1.23816731,6.424414 0.825652,1.87165 2.082076,3.365591 3.769279,4.481381 1.687204,1.07979 3.7875346,1.619539 6.3003905,1.619539 2.333367,0 4.415336,-0.413428 6.24613,-1.241268 1.830796,-0.86383 3.285069,-2.214222 4.362008,-4.049882 1.076938,-1.87164 1.614889,-4.264473 1.614889,-7.179923 0,-2.37556 -0.413032,-4.4995378 -1.238684,-6.3711878 -0.255712,-0.57967 -0.263761,-0.7933684 -0.602031,-1.2970784 -2.066476,0.0269 -3.4823,0.5911299 -4.433838,1.6753499 1.148449,1.54765 1.428854,3.3114656 1.428854,5.9386553 0,5.8309 -2.31551,8.746753 -6.946346,8.746753 -2.297468,0 -4.0209767,-0.791865 -5.1697107,-2.375565 -1.148735,-1.58371 -1.7228923,-3.707688 -1.7228923,-6.371188 0,-2.6994897 0.5384653,-4.8052168 1.6154053,-6.3169268 1.112836,-1.54771 2.9260887,-2.3213053 5.4389447,-2.3213053 0.153921,0 0.302022,0.00765 0.450618,0.014986 -0.395023,0.4708488 -0.759796,0.9838563 -1.085722,1.5502929 -1.076938,1.83566 -1.614888,4.1934933 -1.614888,7.0729532 0,2.37555 0.411997,4.516774 1.23765,6.424414 0.288581,0.65418 0.427283,0.935187 0.821139,1.497067 1.966022,-0.0326 3.398647,-0.608477 4.416785,-1.728577 -0.03756,-0.0486 -0.07625,-0.0955 -0.112655,-0.145728 -1.148735,-1.58371 -1.51722,-3.383676 -1.51722,-6.047176 0,-2.6994899 0.538982,-4.805217 1.615922,-6.316927 1.112836,-1.54771 2.925572,-2.3213053 5.438428,-2.3213053 2.26157,0 3.948869,0.7918656 5.061706,2.3755656 1.148734,1.54771 1.722893,3.6351568 1.722893,6.2626667 0,5.78793 -1.664686,8.349086 -6.227527,8.391736 -1.006953,1.29126 -2.457656,2.500417 -3.928959,3.194637 -0.0026,0.001 -0.0057,0.0021 -0.0083,0.0041 -0.211182,0.0955 -0.42591,0.185091 -0.643371,0.269751 1.151875,0.34125 2.635461,0.841809 4.048331,0.841809 2.333367,0 3.797803,-0.590161 5.628597,-1.418001 1.830796,-0.86383 3.285069,-2.214222 4.362008,-4.049882 1.076938,-1.87164 1.615405,-4.264473 1.615405,-7.179923 0,-2.37556 -0.413032,-4.499538 -1.238684,-6.371188 C 31.737185,4.32432 30.48128,2.8486401 28.794077,1.7688501 27.106875,0.65306008 25.006543,0.09505044 22.493686,0.09505044 c -1.835416,0 -3.512989,0.27121017 -5.037418,0.80563557 C 16.114217,0.36792318 14.580036,0.09508464 12.84366,0.09508464 Z'/%3E%3C/svg%3E");
+
     /* Log level accents: readable on light and dark backgrounds alike. */
     --nilpoint-log-entry-info: light-dark(#5c6b7d, #93a4b8);
     --nilpoint-log-entry-success: light-dark(#1a7f4b, #4ec98a);
@@ -318,30 +326,38 @@
     box-shadow: var(--nilpoint-panel-shadow);
 }
 
-/* put the loading indictor in the centre, not taking up space. Nice indication without causing th epage to jump as it appears/disappears.  */
-#nilpoint-game-container img.htmx-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 2;
-    width: 2rem;
-    height: 2rem;
-    margin: -1rem 0 0 -1rem;
-    pointer-events: none;
-}
-
-/* also stop pico's rule from unwrapping and making stuff mnove */
-.nilpoint-panel[aria-busy="true"] {
+/* stop pico's rule from unwrapping while loading*/
+#nilpoint-game-container [aria-busy="true"] {
     white-space: normal;
 }
 
-#nilpoint-game-container .nilpoint-panel[aria-busy="true"]::before {
+#nilpoint-game-container [aria-busy="true"]:not(.nilpoint-panel) {
+    position: relative;
+}
+
+#nilpoint-game-container [aria-busy="true"]::before {
+    content: "";
     position: absolute;
     top: 50%;
     left: 50%;
     z-index: 2;
-    margin: -0.5em 0 0 -0.5em;
+    /* The logo is ~1.31:1, so size by width and let the box be its natural
+       shape; the -50% margins of that box centre it on both axes. */
+    width: 3rem;
+    height: 2.3rem;
+    margin: -1.15rem 0 0 -1.5rem;
+    background-image: var(--nilpoint-loading-icon);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
     pointer-events: none;
+    animation: nilpoint-loading-spin 1.4s linear infinite;
+}
+
+@keyframes nilpoint-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Scene: aspect ratio reserves the space before the graphic
