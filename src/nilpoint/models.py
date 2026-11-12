@@ -500,22 +500,24 @@ class Exit(GameAsset, InteractiveMixin):
             raise ValueError(
                 f"Trying to make an exit between locations in different game instances: {type(location1.game)} ID {location1.game.id} != {type(location2.game)} ID {location2.game.id}"
             )
-        e1 = Exit(
-            name=name1,
-            exit_from=location1,
-            exit_to=location2,
+        e1 = Exit.objects.update_or_create(
+            asset_id=asset_id_prefix + "_A",            
             game=location1.game,
-            asset_id=asset_id_prefix + "_A",
+            defaults={
+                "name":name1,            
+                "exit_from":location1,
+                "exit_to":location2,
+            }
         )
-        e2 = Exit(
-            name=name2,
-            exit_from=location2,
-            exit_to=location1,
+        e2 = Exit.objects.update_or_create(
             game=location1.game,
             asset_id=asset_id_prefix + "_B",
+            defaults={
+            "name":name2,
+            "exit_from":location2,
+            "exit_to":location1,
+            }
         )
-        e1.save()
-        e2.save()
         return (e1, e2)
 
     def visible_to(self, pc):
