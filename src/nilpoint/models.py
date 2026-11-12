@@ -825,6 +825,15 @@ class PlayerCharacter(StatefulMixin, models.Model):
         """Return this character's InventoryItem rows, scoped to this character."""
         return InventoryItem.objects.for_character(self).select_related("item")
 
+
+    def check_holding(self, asset_id):
+        print(f"Inventory: {self.inventory_items()}")
+        for item in self.inventory_items():
+            print(item)
+            if item.item.asset_id == asset_id:
+                return True
+        return False
+    
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
 
