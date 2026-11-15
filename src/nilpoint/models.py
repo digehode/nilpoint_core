@@ -500,7 +500,7 @@ class Exit(GameAsset, InteractiveMixin):
             raise ValueError(
                 f"Trying to make an exit between locations in different game instances: {type(location1.game)} ID {location1.game.id} != {type(location2.game)} ID {location2.game.id}"
             )
-        e1 = Exit.objects.update_or_create(
+        e1,_ = Exit.objects.update_or_create(
             asset_id=asset_id_prefix + "_A",            
             game=location1.game,
             defaults={
@@ -509,13 +509,13 @@ class Exit(GameAsset, InteractiveMixin):
                 "exit_to":location2,
             }
         )
-        e2 = Exit.objects.update_or_create(
+        e2,_ = Exit.objects.update_or_create(
             game=location1.game,
             asset_id=asset_id_prefix + "_B",
             defaults={
-            "name":name2,
-            "exit_from":location2,
-            "exit_to":location1,
+                "name":name2,
+                "exit_from":location2,
+                "exit_to":location1,
             }
         )
         return (e1, e2)
