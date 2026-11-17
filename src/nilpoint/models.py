@@ -320,7 +320,7 @@ class Game(models.Model):
             f"Asset with asset_id '{asset_id}' not found for game '{self}'."
         )
 
-
+    
 class Player(models.Model):
     """Represents a player
 
@@ -835,6 +835,17 @@ class PlayerCharacter(StatefulMixin, models.Model):
             if item.item.asset_id == asset_id:
                 return True
         return False
+
+    def place_item(self, location_id, item_id):
+        """
+        Creates a LocationItem for the current player character, for use in release steps
+        """
+        loc=self.game.get_asset(location_id)
+        item=self.game.get_asset(item_id)
+        LocationItem(location=loc,item=item, pc=self).save()
+
+
+
     
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
