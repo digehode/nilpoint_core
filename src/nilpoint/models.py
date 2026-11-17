@@ -320,7 +320,7 @@ class Game(models.Model):
             f"Asset with asset_id '{asset_id}' not found for game '{self}'."
         )
 
-
+    
 class Player(models.Model):
     """Represents a player
 
@@ -500,22 +500,24 @@ class Exit(GameAsset, InteractiveMixin):
             raise ValueError(
                 f"Trying to make an exit between locations in different game instances: {type(location1.game)} ID {location1.game.id} != {type(location2.game)} ID {location2.game.id}"
             )
-        e1 = Exit(
-            name=name1,
-            exit_from=location1,
-            exit_to=location2,
+        e1,_ = Exit.objects.update_or_create(
+            asset_id=asset_id_prefix + "_A",            
             game=location1.game,
-            asset_id=asset_id_prefix + "_A",
+            defaults={
+                "name":name1,            
+                "exit_from":location1,
+                "exit_to":location2,
+            }
         )
-        e2 = Exit(
-            name=name2,
-            exit_from=location2,
-            exit_to=location1,
+        e2,_ = Exit.objects.update_or_create(
             game=location1.game,
             asset_id=asset_id_prefix + "_B",
+            defaults={
+                "name":name2,
+                "exit_from":location2,
+                "exit_to":location1,
+            }
         )
-        e1.save()
-        e2.save()
         return (e1, e2)
 
     def visible_to(self, pc):
@@ -825,6 +827,26 @@ class PlayerCharacter(StatefulMixin, models.Model):
         """Return this character's InventoryItem rows, scoped to this character."""
         return InventoryItem.objects.for_character(self).select_related("item")
 
+
+    def check_holding(self, asset_id):
+        print(f"Inventory: {self.inventory_items()}")
+        for item in self.inventory_items():
+            print(item)
+            if item.item.asset_id == asset_id:
+                return True
+        return False
+
+    def place_item(self, location_id, item_id):
+        """
+        Creates a LocationItem for the current player character, for use in release steps
+        """
+        loc=self.game.get_asset(location_id)
+        item=self.game.get_asset(item_id)
+        LocationItem(location=loc,item=item, pc=self).save()
+
+
+
+    
     def __str__(self):
         return f"PC({self.handle}) in {self.game.instance_name}"
 

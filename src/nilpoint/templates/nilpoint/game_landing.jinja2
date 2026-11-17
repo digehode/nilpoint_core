@@ -2,6 +2,15 @@
 {% load nilpoint_tags %}
 {% partialdef landing %}
     <script src="{% static 'nilpoint/js/nilpoint.js' %}"></script>
+    {# Emit game CSS change event for HTMX dynamic CSS swapping #}
+    <script>
+        (function() {
+            var css = "{{ game.css|default:'' }}";
+            if (css) {
+                document.body.dispatchEvent(new CustomEvent('nilpoint:game-css', { detail: { css: css } }));
+            }
+        })();
+    </script>
     {# One console: the bezel frames every panel. Core's default is neutral and theme-adaptive; a game skins it in CSS via the --nilpoint-bezel-* tokens. #}
     <div class="nilpoint-bezel">
         <div id="nilpoint-game-container">
